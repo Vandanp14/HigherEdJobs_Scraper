@@ -12,7 +12,10 @@ load_dotenv(ROOT / ".env")
 class Settings:
     database: Path = ROOT / os.getenv("HEJ_DATABASE", "data/jobs.sqlite3")
     request_delay: float = max(0.5, float(os.getenv("HEJ_REQUEST_DELAY", "2")))
-    headless: bool = os.getenv("HEJ_HEADLESS", "true").lower() == "true"
+    # HigherEdJobs can invalidate a visible, manually verified session when the
+    # follow-up search uses a headless browser. Default to visible operation so
+    # any access check remains actionable rather than becoming silent failures.
+    headless: bool = os.getenv("HEJ_HEADLESS", "false").lower() == "true"
     browser_channel: str | None = os.getenv("HEJ_BROWSER_CHANNEL") or None
     cache_hours: float = max(0, float(os.getenv("HEJ_CACHE_HOURS", "24")))
     timeout_ms: int = int(os.getenv("HEJ_TIMEOUT_MS", "30000"))

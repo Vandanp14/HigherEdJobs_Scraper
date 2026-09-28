@@ -22,6 +22,11 @@ npm run dev
 
 Open the URL shown by Vite, normally `http://localhost:5173`. Stop either process with `Ctrl+C`.
 
+The HigherEdJobs browser opens visibly by default. Keep it open while a search runs; if the
+site asks for verification, complete it there and let the run continue. To explicitly opt into
+headless mode, add `HEJ_HEADLESS=true` to `.env` (this can cause HigherEdJobs to reject a
+previously verified session).
+
 ## Use the dashboard
 
 1. Click **Run HigherEdJobs** to run every enabled keyword query, or **Run AIR Career Center** to fetch AIR directly without running HigherEdJobs searches.

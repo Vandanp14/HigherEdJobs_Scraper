@@ -116,8 +116,13 @@ function App() {
       const result = await request('/runs', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
       }) as Run;
-      const errors = result.errors?.length ? ` ${result.errors.length} group(s) failed.` : '';
-      setNotice(`HigherEdJobs run complete: ${result.jobs_discovered} listings found (${result.new_jobs} new, ${result.updated_jobs} updated).${errors}`);
+      const accessBlocked = result.errors?.some(error => error.error.includes('access check blocked'));
+      if (accessBlocked) {
+        setNotice('HigherEdJobs blocked this session before detail pages could be read. Refresh the saved browser session with scripts/codegen.sh, complete verification manually, then run the search again.');
+      } else {
+        const errors = result.errors?.length ? ` ${result.errors.length} group(s) failed.` : '';
+        setNotice(`HigherEdJobs run complete: ${result.jobs_discovered} listings found (${result.new_jobs} new, ${result.updated_jobs} updated).${errors}`);
+      }
       await load();
     } catch (error) {
       setNotice(`HigherEdJobs run failed: ${(error as Error).message}`);
