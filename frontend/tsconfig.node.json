@@ -1,1 +1,1 @@
-{"compilerOptions":{"composite":true,"module":"ESNext","moduleResolution":"Bundler","allowSyntheticDefaultImports":true},"include":["vite.config.ts"]}
+{"compilerOptions":{"composite":true,"module":"Node16","moduleResolution":"Node16","allowSyntheticDefaultImports":true},"include":["vite.config.ts"]}
