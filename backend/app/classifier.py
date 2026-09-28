@@ -3,7 +3,7 @@
 import re
 from dataclasses import asdict, dataclass
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 TRIGGER = re.compile(
     r"\b(?:visa(?:\s+sponsorship)?|sponsor(?:ship|ing|ed|s)?|h[-‑–]?1b|"
     r"work\s+authorization|employment\s+authorization|authorized\s+to\s+work|"
@@ -12,8 +12,18 @@ TRIGGER = re.compile(
 
 # Match within clauses rather than joining unrelated sentences across a posting.
 NEGATIVE = [
-    r"\b(?:cannot|can\s+not|can't|will\s+not|won't|does\s+not|do\s+not|unable\s+to)\s+(?:\w+[ -]){0,5}sponsor(?:ship)?\b",
-    r"\b(?:visa\s+|h[-‑–]?1b\s+)?sponsorship\s+(?:\w+\s+){0,3}(?:not\s+(?:available|provided|offered|possible|supported)|unavailable)\b",
+    # Employer names and modifiers can appear before the denial, so anchor on the
+    # unambiguous negative verb + sponsorship action instead of an institution.
+    r"\b(?:cannot|can\s+not|can't|will\s+not|won't|does\s+not|do\s+not|"
+    r"is\s+not\s+able\s+to|are\s+not\s+able\s+to|unable\s+to)\s+"
+    r"(?:(?:\w+[ -]){0,5})?(?:sponsor(?:ship|ing|ed)?|provide|offer|support)\b",
+    r"\b(?:visa\s+|h[-‑–]?1b\s+|immigration\s+|employer\s+)?sponsorship\s+"
+    r"(?:(?:is|will|can)(?:\s+be)?\s+)?(?:(?:currently|presently|at\s+this\s+time)\s+)?"
+    r"(?:not\s+(?:be\s+)?(?:available|provided|offered|possible|supported)|unavailable)\b",
+    # Some institutions specifically decline a transfer, takeover, or assumption
+    # of an existing visa sponsorship. These are as definitive as a flat refusal.
+    r"\b(?:does|do|will)\s+not\s+(?:sponsor|transfer|take\s+over|assume)\b"
+    r".{0,100}\b(?:visa|sponsorship|employment\s+authorization|immigration)\b",
     r"\bnot\s+eligible\s+for\s+(?:\w+[ -]){0,3}sponsorship\b",
     r"\bwithout\s+(?:(?:current|future)\s+(?:(?:or|and)\s+)?){0,2}(?:visa\s+|employer\s+)?sponsorship\b",
     r"\bno\s+(?:visa\s+|h[-‑–]?1b\s+)?sponsorship\s+(?:is\s+)?(?:available|provided|offered)\b",
