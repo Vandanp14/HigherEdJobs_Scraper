@@ -24,13 +24,44 @@ Open the URL shown by Vite, normally `http://localhost:5173`. Stop either proces
 
 ## Use the dashboard
 
-1. Click **Run all searches** to run every enabled query.
-2. Use **Search groups** to enable or disable the eight fixed searches.
-3. Filter by date, search group, sponsorship signal, application status, or text.
-4. Click an evidence excerpt to show its full source context.
+1. Click **Run HigherEdJobs** to run every enabled keyword query, or **Run AIR Career Center** to fetch AIR directly without running HigherEdJobs searches.
+2. Use **Search sources** to enable or disable the eight HigherEdJobs groups and run either source.
+3. Filter by source, date, search group, sponsorship signal, application status, or text.
+4. Click an evidence excerpt to show its full source context. AIR salary and application due dates are shown in the unified table.
 5. Open a listing or application link to mark a new job as **Opened**. Change the status manually as needed.
 
 The run works sequentially to be considerate of HigherEdJobs. A small run can finish in minutes; a run with roughly 150 job listings can take 8–15 minutes.
+
+### AIR Career Center
+
+AIR is a curated, read-only source at `https://www.airweb.org/community/Career-Center/`.
+The dashboard fetches its table, follows each listing detail page, and stores
+AIR rows by `(source, source_job_id)` independently from HigherEdJobs. AIR has
+no keyword groups. A missing salary remains empty, and an unparseable due date
+is kept as the source text rather than guessed.
+
+If a detail page cannot be captured, the row remains visible with
+`description_status=Failed`; this is different from a successfully captured
+description with `No Mention Found`. A pending row has not yet had its detail
+page captured. Existing application status and notes survive AIR reruns.
+
+For selector discovery (never commit browser storage or recorded credentials):
+
+```bash
+.venv/bin/playwright codegen \
+  --save-storage data/air-browser-state.json \
+  https://www.airweb.org/community/Career-Center/
+```
+
+The API also exposes `POST /api/runs/air`, `GET /api/sources`, and the
+source-aware `GET /api/jobs?source=air` endpoint. AIR errors include the
+listing URL where available.
+
+Existing HigherEdJobs databases migrate on application startup: legacy rows
+are assigned `source=higheredjobs`, while `higheredjobs_id` and
+`higheredjobs_url` remain readable. New uniqueness uses source identity and
+source URL; application status, notes, first-seen timestamps, and run history
+are not reset.
 
 ## Refresh HigherEdJobs access
 
@@ -73,6 +104,9 @@ cd frontend && npm install
 
 # Make a production frontend build
 cd frontend && npm run build
+
+# Run backend parser, migration, API, and classifier tests
+.venv/bin/pytest
 ```
 
 ## Local files
@@ -82,6 +116,7 @@ cd frontend && npm run build
 | `data/jobs.sqlite3` | Saved jobs, descriptions, evidence, statuses, and run history. |
 | `data/browser-state.json` | Saved HigherEdJobs browser session. Keep this file to avoid repeated verification. |
 | `backend/app/` | FastAPI API, Playwright scraper, SQLite storage, parser, and classifier. |
+| `backend/tests/fixtures/` | Sanitized HigherEdJobs and AIR HTML fixtures for deterministic parser tests. |
 | `frontend/` | React dashboard. |
 | `scripts/codegen.sh` | Starts manual browser discovery and refreshes the saved session. |
 | `scripts/manage-data.py` | Checks, compacts, or clears local job data. |
