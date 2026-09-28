@@ -193,6 +193,29 @@ function App() {
       </header>
       {notice && <p className="run-notice" role="status">{notice}</p>}
       {activeRun && <p className="run-progress" role="status"><LoaderCircle className="animate-spin" size={15} /><span><b>{activeRun === 'higheredjobs' ? 'HigherEdJobs search' : activeRun === 'air' ? 'AIR refresh' : 'Description re-analysis'} in progress</b><small>Elapsed {elapsedLabel}. Keep this tab open; do not refresh while it runs.</small></span></p>}
+      <section className="source-switcher" aria-label="Job source views">
+        <div className="source-switcher-heading">
+          <div><span className="eyebrow">SOURCE VIEWS</span><h2>Choose a job source</h2></div>
+          <p>Keep each portal's workflow visible while retaining one review queue.</p>
+        </div>
+        <div className="source-view-grid">
+          <button className={'source-view all-sources' + (!sourceFilter ? ' active' : '')} onClick={() => update('source', '')}>
+            <span className="source-view-mark">ALL</span>
+            <span><strong>All sources</strong><small>Unified review queue</small></span>
+            <span className="source-view-arrow">→</span>
+          </button>
+          <button className={'source-view highered-view' + (sourceFilter === 'higheredjobs' ? ' active' : '')} onClick={() => update('source', 'higheredjobs')}>
+            <span className="source-view-mark">HEJ</span>
+            <span><strong>HigherEdJobs</strong><small>Keyword search roles</small></span>
+            <span className="source-view-arrow">→</span>
+          </button>
+          <button className={'source-view air-view' + (sourceFilter === 'air' ? ' active' : '')} onClick={() => { update('source', 'air'); update('group', ''); }}>
+            <span className="source-view-mark">AIR</span>
+            <span><strong>AIR Career Center</strong><small>Curated data roles</small></span>
+            <span className="source-view-arrow">→</span>
+          </button>
+        </div>
+      </section>
       {showSources && <section className="sources">
         <div className="section-title"><div><h2>Search sources</h2><p>Run AIR independently or enable the keyword groups used by HigherEdJobs.</p></div><button className="icon-button" aria-label="Close search sources" onClick={() => setShowSources(false)}>×</button></div>
         <div className="source-grid">
