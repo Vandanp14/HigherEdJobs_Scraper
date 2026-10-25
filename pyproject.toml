@@ -24,6 +24,7 @@ include = ["backend*"]
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
+pythonpath = ["."]
 asyncio_mode = "auto"
 
 [tool.ruff]

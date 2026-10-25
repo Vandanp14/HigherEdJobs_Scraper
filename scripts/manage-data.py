@@ -3,6 +3,7 @@
 
 import argparse
 import sqlite3
+import sys
 from pathlib import Path
 
 
@@ -19,6 +20,17 @@ def main():
     parser = argparse.ArgumentParser(description="Manage local job data without changing the browser session.")
     parser.add_argument("command", choices=("status", "compact", "clear-jobs"))
     command = parser.parse_args().command
+    if command == "clear-jobs":
+        # Use the app's own wipe so matches and sponsorship analysis go with the jobs; a plain
+        # sqlite3 connection has foreign keys off, which left orphan rows behind.
+        sys.path.insert(0, str(ROOT))
+        from backend.app.database import Database
+
+        database = Database(DATABASE)
+        database.clear_jobs()
+        database.connection.execute("VACUUM")
+        print(f"Cleared job data and run history. Browser session remains: {STATE}")
+        return
     if not DATABASE.exists():
         raise SystemExit("No jobs database exists yet.")
     connection = sqlite3.connect(DATABASE)
@@ -33,11 +45,6 @@ def main():
         connection.commit()
         connection.execute("VACUUM")
         print(f"Removed original page HTML from {affected} jobs. Database is now {size(DATABASE)}.")
-    else:
-        connection.executescript("DELETE FROM scrape_runs; DELETE FROM jobs;")
-        connection.commit()
-        connection.execute("VACUUM")
-        print(f"Cleared job data and run history. Browser session remains: {STATE}")
 
 
 if __name__ == "__main__":

@@ -61,6 +61,11 @@ class Database:
             "INSERT OR IGNORE INTO search_groups (id,name,query,priority) VALUES (?,?,?,?)",
             [(identifier, name, query, index) for index, (identifier, name, query) in enumerate(SEARCH_GROUPS)],
         )
+        # "University IT Titles" repeats the software and systems queries. Disable it once so a
+        # user who re-enables it in Search sources keeps that choice across restarts.
+        if self.connection.execute("PRAGMA user_version").fetchone()[0] < 1:
+            self.connection.execute("UPDATE search_groups SET enabled=0 WHERE id='it'")
+            self.connection.execute("PRAGMA user_version=1")
         self.connection.commit()
 
     def _migrate_columns(self):
@@ -129,6 +134,9 @@ class Database:
         return result
 
     def upsert(self, draft: JobDraft, group_id: str | None = None) -> bool:
+        return self.upsert_job(draft, group_id)[1]
+
+    def upsert_job(self, draft: JobDraft, group_id: str | None = None) -> tuple[int, bool]:
         now = utcnow()
         source = draft.source or "higheredjobs"
         source_url = draft.source_url or draft.higheredjobs_url
@@ -205,16 +213,29 @@ class Database:
             )
             job_id, is_new = cursor.lastrowid, True
         if group_id:
-            self.connection.execute(
-                "INSERT INTO job_search_matches(job_id,search_group_id,first_matched_at,last_matched_at) VALUES (?,?,?,?) "
-                "ON CONFLICT(job_id,search_group_id) DO UPDATE SET last_matched_at=excluded.last_matched_at",
-                (job_id, group_id, now, now),
-            )
+            self._record_match(job_id, group_id, now)
         if draft.normalized_description:
             result = classify(draft.normalized_description).as_dict()
             self.connection.execute("INSERT INTO sponsorship_analysis(job_id,status,confidence,evidence,evidence_context,matched_terms,classifier_version,analyzed_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET status=excluded.status,confidence=excluded.confidence,evidence=excluded.evidence,evidence_context=excluded.evidence_context,matched_terms=excluded.matched_terms,classifier_version=excluded.classifier_version,analyzed_at=excluded.analyzed_at", (job_id, result["status"], result["confidence"], result["evidence"], result["evidence_context"], json.dumps(result["matched_terms"]), result["classifier_version"], now))
         self.connection.commit()
-        return is_new
+        return job_id, is_new
+
+    def _record_match(self, job_id: int, group_id: str, now: str):
+        self.connection.execute(
+            "INSERT INTO job_search_matches(job_id,search_group_id,first_matched_at,last_matched_at) VALUES (?,?,?,?) "
+            "ON CONFLICT(job_id,search_group_id) DO UPDATE SET last_matched_at=excluded.last_matched_at",
+            (job_id, group_id, now, now),
+        )
+
+    def add_match(self, job_id: int, group_id: str):
+        self._record_match(job_id, group_id, utcnow())
+        self.connection.commit()
+
+    def clear_jobs(self):
+        self.connection.executescript(
+            "DELETE FROM sponsorship_analysis; DELETE FROM job_search_matches; DELETE FROM jobs; DELETE FROM scrape_runs;"
+        )
+        self.connection.commit()
 
     def jobs(self, query: str = "", group: str = "", sponsorship: str = "", application_status: str = "", days: str = "7", sort: str = "newest", page: int = 1, per_page: int = 50, source: str = "", description: str = ""):
         clauses, values = ["1=1"], []
