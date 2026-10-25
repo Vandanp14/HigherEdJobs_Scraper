@@ -2,7 +2,25 @@
 
 Local job discovery and sponsorship-language review based on `HigherEdJobs_PRD.md`.
 
-## Start the app
+## Daily use
+
+```bash
+./daily.sh
+```
+
+One command does the whole daily routine:
+
+1. **Wipes all saved jobs**, including application statuses (Opened, Applied, Skipped) and notes. The saved browser session in `data/browser-state.json` is kept.
+2. Rebuilds the dashboard if its source changed, then serves the API and dashboard at `http://127.0.0.1:8000`.
+3. Opens the dashboard and starts the HigherEdJobs and AIR runs. Jobs appear as they are fetched.
+
+If HigherEdJobs asks for human verification, you hear a sound and the terminal prints a message. Solve the check in the browser window the run opened. The run waits up to 5 minutes (`HEJ_VERIFICATION_TIMEOUT`, in seconds), saves the session, and continues. `scripts/codegen.sh` is no longer needed for daily runs.
+
+Each job page is opened once per run, even when several search groups match it. The "University IT Titles" group repeats the Software and Systems queries, so it is off by default; re-enable it under **Search sources** if wanted.
+
+Press `Ctrl+C` to stop.
+
+## Start the app for development
 
 Open two terminals in this project folder.
 
@@ -84,13 +102,13 @@ All job data is stored locally in `data/jobs.sqlite3`. It is a single SQLite fil
 
 ```bash
 # Show database size, job count, and browser-session size
-python3 scripts/manage-data.py status
+.venv/bin/python scripts/manage-data.py status
 
 # Save space: remove original HTML while keeping jobs, evidence, classifications, and statuses
-python3 scripts/manage-data.py compact
+.venv/bin/python scripts/manage-data.py compact
 
 # Delete saved jobs and scrape history; keeps browser-state.json
-python3 scripts/manage-data.py clear-jobs
+.venv/bin/python scripts/manage-data.py clear-jobs
 ```
 
 `clear-jobs` means a future run must collect job data again. It does not require codegen again unless HigherEdJobs asks for a new verification.

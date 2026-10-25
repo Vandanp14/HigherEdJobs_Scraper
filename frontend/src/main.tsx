@@ -24,7 +24,7 @@ type Job = {
   description_status: string;
 };
 type Group = { id: string; name: string; query: string; enabled: boolean };
-type Source = { id: string; name: string; description: string; supports_queries: boolean };
+type Source = { id: string; name: string; description: string; supports_queries: boolean; last_run?: Run | null };
 type Filters = Record<string, string>;
 type Run = {
   source: string;
@@ -60,6 +60,7 @@ function App() {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [showSources, setShowSources] = useState(false);
   const [notice, setNotice] = useState('');
+  const [externalRun, setExternalRun] = useState(false);
   const [filters, setFilters] = useState<Filters>({
     query: '', group: '', sponsorship: '', description: '', application_status: '', days: '7', sort: 'newest', source: '',
   });
@@ -96,6 +97,27 @@ function App() {
     return () => window.clearInterval(timer);
   }, [activeRun, runStartedAt]);
 
+  // Runs started outside this tab (daily.sh) save jobs as they go; poll so they appear here.
+  useEffect(() => {
+    if (activeRun) return undefined;
+    const poll = async () => {
+      try {
+        const sourceList = await request('/sources') as Source[];
+        setSources(sourceList);
+        const running = sourceList.some(source => source.last_run && !source.last_run.completed_at);
+        if (running || externalRun) await load();
+        if (running && !externalRun) setNotice('A run started by daily.sh is in progress — new jobs appear automatically.');
+        if (!running && externalRun) setNotice('Daily run finished.');
+        setExternalRun(running);
+      } catch {
+        // Server stopped; keep the current view.
+      }
+    };
+    const timer = window.setInterval(poll, 10000);
+    poll();
+    return () => window.clearInterval(timer);
+  }, [activeRun, externalRun, parameters]);
+
   const beginRun = (run: 'higheredjobs' | 'air' | 'reanalyze') => {
     setActiveRun(run);
     setRunStartedAt(Date.now());
@@ -118,7 +140,7 @@ function App() {
       }) as Run;
       const accessBlocked = result.errors?.some(error => error.error.includes('access check blocked'));
       if (accessBlocked) {
-        setNotice('HigherEdJobs blocked this session before detail pages could be read. Refresh the saved browser session with scripts/codegen.sh, complete verification manually, then run the search again.');
+        setNotice('HigherEdJobs verification was not completed in time. Run the search again and solve the verification in the browser window it opens.');
       } else {
         const errors = result.errors?.length ? ` ${result.errors.length} group(s) failed.` : '';
         setNotice(`HigherEdJobs run complete: ${result.jobs_discovered} listings found (${result.new_jobs} new, ${result.updated_jobs} updated).${errors}`);
