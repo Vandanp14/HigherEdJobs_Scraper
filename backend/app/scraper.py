@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from playwright.async_api import BrowserContext, async_playwright
 
+from .access import alert_user, wait_for_access
 from .config import Settings
 from .database import Database
 from .parser import (
@@ -28,10 +29,12 @@ class HigherEdJobsScraper:
             async with async_playwright() as playwright:
                 browser = await playwright.chromium.launch(headless=self.settings.headless, channel=self.settings.browser_channel)
                 context = await browser.new_context(storage_state=self.settings.storage_state) if self.settings.storage_state else await browser.new_context()
+                # Listing URL -> job id for this run, so a job matched by several groups is opened once.
+                fetched: dict[str, int] = {}
                 try:
                     for group in groups:
                         try:
-                            counts = await self._run_group(context, group); discovered += counts[0]; new += counts[1]; updated += counts[2]
+                            counts = await self._run_group(context, group, fetched); discovered += counts[0]; new += counts[1]; updated += counts[2]
                         except Exception as error:
                             errors.append({"group":group["name"],"error":str(error)})
                 finally:
@@ -40,7 +43,7 @@ class HigherEdJobsScraper:
             self.database.finish_run(run_id, discovered, new, updated, errors)
         return self.database.latest_run()
 
-    async def _run_group(self, context: BrowserContext, group: dict):
+    async def _run_group(self, context: BrowserContext, group: dict, fetched: dict[str, int]):
         page = await context.new_page(); page.set_default_timeout(self.settings.timeout_ms)
         try:
             await page.goto(ADVANCED, wait_until="domcontentloaded"); await self._ensure_access(page)
@@ -54,16 +57,18 @@ class HigherEdJobsScraper:
                     key=listing.higheredjobs_url
                     if key in seen: continue
                     seen.add(key); discovered += 1
+                    if key in fetched:
+                        self.database.add_match(fetched[key], group["id"]); continue
                     detail=await context.new_page()
                     try:
                         await detail.goto(key, wait_until="domcontentloaded"); await self._ensure_access(detail)
                         full=parse_job(await detail.content(), detail.url, now)
                         for field in ("title","institution","location","city","state","salary","posted_date"):
                             setattr(full, field, getattr(full, field) or getattr(listing, field))
-                        is_new=self.database.upsert(full,group["id"]); new += int(is_new); updated += int(not is_new)
+                        fetched[key], is_new = self.database.upsert_job(full,group["id"]); new += int(is_new); updated += int(not is_new)
                     except (ParseError, AccessBlocked) as error:
                         listing.description_status = "Failed"
-                        self.database.upsert(listing,group["id"]); updated += 1
+                        fetched[key], _ = self.database.upsert_job(listing,group["id"]); updated += 1
                     finally: await detail.close(); await asyncio.sleep(self.settings.request_delay)
                 next_link=page.get_by_role("link", name="Next page")
                 if await next_link.count() and await next_link.is_visible():
@@ -73,8 +78,15 @@ class HigherEdJobsScraper:
         finally: await page.close()
 
     async def _ensure_access(self, page):
-        content=await page.content()
-        checked_soup(content)
+        if self.settings.headless:
+            checked_soup(await page.content()); return
+        state_path = self.settings.storage_state or str(self.settings.state_path)
+        await wait_for_access(
+            page,
+            timeout_s=self.settings.verification_timeout_s,
+            alert=alert_user,
+            save_state=lambda: page.context.storage_state(path=state_path),
+        )
 
 
 class AIRScraper:

@@ -126,8 +126,8 @@ def checked_soup(html: str, portal: str = "HigherEdJobs") -> BeautifulSoup:
     ):
         if portal == "HigherEdJobs":
             raise AccessBlocked(
-                "HigherEdJobs access check blocked this request. Open the site normally and use "
-                "scripts/codegen.sh to verify access and selectors; no bypass is attempted."
+                "HigherEdJobs access check blocked this request. Solve the verification in the browser "
+                "window opened by the run, or run scripts/codegen.sh; no bypass is attempted."
             )
         raise AccessBlocked(f"{portal} access check blocked this request. Open the site normally and verify access and selectors; no bypass is attempted.")
     return soup
