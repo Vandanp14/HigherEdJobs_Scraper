@@ -11,6 +11,8 @@ from .database import Database
 from .scraper import AIRScraper, HigherEdJobsScraper
 
 settings=Settings(); database=Database(settings.database); app=FastAPI(title="HigherEdJobs Review")
+# Sources with a run in progress; a second run would double the request rate to the same site.
+RUNNING: set[str]=set()
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_methods=["*"], allow_headers=["*"])
 
 class GroupUpdate(BaseModel): enabled: bool
@@ -36,10 +38,15 @@ def job_update(job_id:int, body:JobUpdate):
 def opened(job_id:int): database.mark_opened(job_id); return {"ok":True}
 @app.get("/api/runs/latest")
 def latest_run(source:str=""): return database.latest_run(source or None)
+async def exclusive(source:str, start):
+    if source in RUNNING: raise HTTPException(409,"A run for this source is already in progress")
+    RUNNING.add(source)
+    try: return await start()
+    finally: RUNNING.discard(source)
 @app.post("/api/runs")
-async def run(body:RunRequest): return await HigherEdJobsScraper(database,settings).run(body.group_ids or None)
+async def run(body:RunRequest): return await exclusive("higheredjobs", lambda: HigherEdJobsScraper(database,settings).run(body.group_ids or None))
 @app.post("/api/runs/air")
-async def run_air(): return await AIRScraper(database,settings).run()
+async def run_air(): return await exclusive("air", lambda: AIRScraper(database,settings).run())
 @app.get("/api/sources")
 def sources():
     return [

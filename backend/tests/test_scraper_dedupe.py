@@ -52,3 +52,25 @@ def test_listing_in_two_groups_is_fetched_once_and_matched_twice(tmp_path, monke
     assert groups == ["data", "software"]
     assert first == (1, 1, 0)
     assert second == (1, 0, 0)
+
+
+def test_verification_timeout_fails_fast_for_rest_of_run(tmp_path, monkeypatch):
+    waits = []
+
+    async def never_solved(page, **options):
+        waits.append(page)
+        raise scraper.AccessBlocked("blocked")
+
+    monkeypatch.setattr(scraper, "wait_for_access", never_solved)
+    settings = replace(Settings(), headless=False)
+    job_scraper = scraper.HigherEdJobsScraper(Database(tmp_path / "jobs.sqlite3"), settings)
+
+    async def ensure_twice():
+        for _ in range(2):
+            try:
+                await job_scraper._ensure_access(FakePage(FakeContext()))
+            except scraper.AccessBlocked:
+                pass
+
+    asyncio.run(ensure_twice())
+    assert len(waits) == 1

@@ -20,7 +20,11 @@ from .parser import (
 
 
 class HigherEdJobsScraper:
-    def __init__(self, database: Database, settings: Settings): self.database, self.settings = database, settings
+    def __init__(self, database: Database, settings: Settings):
+        self.database, self.settings = database, settings
+        # Set after one unsolved verification so the rest of the run fails fast instead of
+        # waiting the full timeout again for every group and listing.
+        self.verification_abandoned = False
 
     async def run(self, group_ids: list[str] | None = None):
         groups = [group for group in self.database.groups() if group["enabled"] and (not group_ids or group["id"] in group_ids)]
@@ -80,13 +84,19 @@ class HigherEdJobsScraper:
     async def _ensure_access(self, page):
         if self.settings.headless:
             checked_soup(await page.content()); return
+        if self.verification_abandoned:
+            checked_soup(await page.content()); return
         state_path = self.settings.storage_state or str(self.settings.state_path)
-        await wait_for_access(
-            page,
-            timeout_s=self.settings.verification_timeout_s,
-            alert=alert_user,
-            save_state=lambda: page.context.storage_state(path=state_path),
-        )
+        try:
+            await wait_for_access(
+                page,
+                timeout_s=self.settings.verification_timeout_s,
+                alert=alert_user,
+                save_state=lambda: page.context.storage_state(path=state_path),
+            )
+        except AccessBlocked:
+            self.verification_abandoned = True
+            raise
 
 
 class AIRScraper:

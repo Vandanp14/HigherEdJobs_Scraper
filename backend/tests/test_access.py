@@ -47,3 +47,25 @@ def test_wait_for_access_times_out():
     with pytest.raises(AccessBlocked):
         run_wait([BLOCKED], timeout_s=0.05, poll_s=0.01)
     assert run_wait.calls == {"alert": 1, "save": 0}
+
+
+class NavigatingPage(FakePage):
+    async def content(self):
+        page = self.pages.pop(0)
+        if page is None:
+            from playwright.async_api import Error
+            raise Error("Unable to retrieve content because the page is navigating")
+        return page
+
+
+def test_wait_for_access_survives_navigation_while_polling():
+    calls = {"alert": 0, "save": 0}
+
+    async def save_state():
+        calls["save"] += 1
+
+    asyncio.run(wait_for_access(
+        NavigatingPage([BLOCKED, None, OK]), timeout_s=1, poll_s=0,
+        alert=lambda: calls.__setitem__("alert", calls["alert"] + 1), save_state=save_state,
+    ))
+    assert calls == {"alert": 1, "save": 1}

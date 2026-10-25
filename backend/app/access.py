@@ -3,6 +3,8 @@ import subprocess
 import sys
 from collections.abc import Awaitable, Callable
 
+from playwright.async_api import Error as PlaywrightError
+
 from .parser import AccessBlocked, checked_soup
 
 
@@ -39,7 +41,8 @@ async def wait_for_access(
         await asyncio.sleep(poll_s)
         try:
             checked_soup(await page.content())
-        except AccessBlocked:
+        except (AccessBlocked, PlaywrightError):
+            # Solving the check reloads the page; content() fails while it navigates.
             if loop.time() >= deadline:
                 raise
             continue

@@ -107,7 +107,13 @@ function App() {
         const running = sourceList.some(source => source.last_run && !source.last_run.completed_at);
         if (running || externalRun) await load();
         if (running && !externalRun) setNotice('A run started by daily.sh is in progress — new jobs appear automatically.');
-        if (!running && externalRun) setNotice('Daily run finished.');
+        if (!running && externalRun) {
+          const errors = sourceList.flatMap(source => source.last_run?.errors ?? []);
+          const blocked = errors.some(error => error.error.includes('access check blocked'));
+          setNotice(blocked
+            ? 'Daily run finished, but HigherEdJobs verification was not completed. Run HigherEdJobs again and solve the verification in the browser window it opens.'
+            : `Daily run finished.${errors.length ? ` ${errors.length} error(s) recorded.` : ''}`);
+        }
         setExternalRun(running);
       } catch {
         // Server stopped; keep the current view.
@@ -214,8 +220,8 @@ function App() {
         <div><p className="breadcrumb">JOB QUEUE / ALL ACTIVE ROLES</p><h1>Job review queue</h1><p>Prioritize roles, inspect sponsorship wording, and track your next step.</p></div>
         <div className="header-actions">
           <button className="button secondary" disabled={Boolean(activeRun)} onClick={reanalyze}>{activeRun === 'reanalyze' ? <LoaderCircle className="animate-spin" size={15} /> : <RefreshCw size={15} />} {activeRun === 'reanalyze' ? `Re-analyzing · ${elapsedLabel}` : 'Re-analyze saved jobs'}</button>
-          <button className="button secondary air-button" disabled={Boolean(activeRun)} onClick={runAir}>{activeRun === 'air' ? <LoaderCircle className="animate-spin" size={14} /> : <Play size={14} fill="currentColor" />} {activeRun === 'air' ? `Refreshing · ${elapsedLabel}` : 'Run AIR Career Center'}</button>
-          <button className="button primary" disabled={Boolean(activeRun)} onClick={runHigherEdJobs}>{activeRun === 'higheredjobs' ? <LoaderCircle className="animate-spin" size={14} /> : <Play size={14} fill="currentColor" />} {activeRun === 'higheredjobs' ? `Searching · ${elapsedLabel}` : 'Run HigherEdJobs'}</button>
+          <button className="button secondary air-button" disabled={Boolean(activeRun) || externalRun} onClick={runAir}>{activeRun === 'air' ? <LoaderCircle className="animate-spin" size={14} /> : <Play size={14} fill="currentColor" />} {activeRun === 'air' ? `Refreshing · ${elapsedLabel}` : 'Run AIR Career Center'}</button>
+          <button className="button primary" disabled={Boolean(activeRun) || externalRun} onClick={runHigherEdJobs}>{activeRun === 'higheredjobs' ? <LoaderCircle className="animate-spin" size={14} /> : <Play size={14} fill="currentColor" />} {activeRun === 'higheredjobs' ? `Searching · ${elapsedLabel}` : 'Run HigherEdJobs'}</button>
         </div>
       </header>
       {notice && <p className="run-notice" role="status">{notice}</p>}
@@ -246,7 +252,7 @@ function App() {
       {showSources && <section className="sources">
         <div className="section-title"><div><h2>Search sources</h2><p>Run AIR independently or enable the keyword groups used by HigherEdJobs.</p></div><button className="icon-button" aria-label="Close search sources" onClick={() => setShowSources(false)}>×</button></div>
         <div className="source-grid">
-          {sources.map(source => <div key={source.id} className="source source-info"><b>{source.name}</b><small>{source.description}</small><button className="source-run" onClick={source.id === 'air' ? runAir : runHigherEdJobs} disabled={Boolean(activeRun)}>{activeRun === source.id ? `Running · ${elapsedLabel}` : 'Run source'}</button></div>)}
+          {sources.map(source => <div key={source.id} className="source source-info"><b>{source.name}</b><small>{source.description}</small><button className="source-run" onClick={source.id === 'air' ? runAir : runHigherEdJobs} disabled={Boolean(activeRun) || externalRun}>{activeRun === source.id ? `Running · ${elapsedLabel}` : 'Run source'}</button></div>)}
           {groups.map(group => <label key={group.id} className="source"><input type="checkbox" checked={group.enabled} onChange={async event => { await request('/groups/' + group.id, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: event.target.checked }) }); load(); }} /><span><b>{group.name}</b><small>{group.query}</small></span></label>)}
         </div>
       </section>}

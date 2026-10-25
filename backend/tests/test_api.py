@@ -67,3 +67,12 @@ def test_legacy_database_gets_source_columns_without_losing_identity(tmp_path):
     assert item["source"] == "higheredjobs"
     assert item["source_job_id"] == "123"
     assert item["source_url"].endswith("JobCode=123")
+
+
+def test_second_run_for_same_source_is_rejected(tmp_path):
+    main.RUNNING.add("higheredjobs")
+    try:
+        response = TestClient(main.app).post("/api/runs", json={})
+        assert response.status_code == 409
+    finally:
+        main.RUNNING.discard("higheredjobs")
