@@ -19,6 +19,8 @@ class Settings:
     browser_channel: str | None = os.getenv("HEJ_BROWSER_CHANNEL") or None
     cache_hours: float = max(0, float(os.getenv("HEJ_CACHE_HOURS", "24")))
     timeout_ms: int = int(os.getenv("HEJ_TIMEOUT_MS", "30000"))
+    state_path: Path = ROOT / "data/browser-state.json"
+    verification_timeout_s: float = float(os.getenv("HEJ_VERIFICATION_TIMEOUT", "300"))
     storage_state: str | None = os.getenv("HEJ_STORAGE_STATE") or (str(ROOT / "data/browser-state.json") if (ROOT / "data/browser-state.json").exists() else None)
 
 
