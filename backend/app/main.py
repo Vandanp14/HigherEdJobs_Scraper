@@ -22,7 +22,7 @@ class JobUpdate(BaseModel): application_status: str | None=None; notes: str | No
 class RunRequest(BaseModel): group_ids: list[str]=Field(default_factory=list)
 
 @app.get("/api/health")
-async def health(): return {"ok":True}
+async def health(): return {"ok":True,"app":"higheredjobs-review"}
 @app.get("/api/groups")
 async def groups(): return database.groups()
 @app.patch("/api/groups/{group_id}")

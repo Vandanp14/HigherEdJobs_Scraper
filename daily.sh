@@ -3,8 +3,10 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-if lsof -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "Port 8000 in use — stop the other server first." >&2
+source scripts/server.sh
+RUNNING=$(running_url)
+if [ -n "$RUNNING" ]; then
+  echo "The dashboard is already running at $RUNNING — stop it (Ctrl+C) first." >&2
   exit 1
 fi
 

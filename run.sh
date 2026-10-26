@@ -5,22 +5,25 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-URL="http://127.0.0.1:8000"
+source scripts/server.sh
 SCRAPE=true
 if [ "${1:-}" = "--no-scrape" ]; then SCRAPE=false; fi
 say() { echo "$(date +%H:%M:%S) [run] $*"; }
 
-if lsof -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "Port 8000 in use — stop the other server first." >&2
+RUNNING=$(running_url)
+if [ -n "$RUNNING" ]; then
+  echo "The dashboard is already running at $RUNNING — use it, or stop it with Ctrl+C first." >&2
   exit 1
 fi
+PORT=$(free_port) || { echo "No free port between 8000 and 8010." >&2; exit 1; }
+URL="http://127.0.0.1:$PORT"
 
 scripts/build-dashboard.sh
 
 # A short graceful-shutdown timeout cancels in-flight scrapes on Ctrl+C; without it uvicorn
 # waits for the run to finish and keeps scraping after this script exits.
 say "Starting server..."
-.venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --log-level warning --timeout-graceful-shutdown 3 &
+.venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port "$PORT" --log-level warning --timeout-graceful-shutdown 3 &
 SERVER=$!
 RUNS=""
 cleanup() {
@@ -30,6 +33,7 @@ cleanup() {
   fi
   kill "$SERVER" 2>/dev/null || true
   wait "$SERVER" 2>/dev/null || true
+  rm -f "$PORT_FILE"
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
@@ -47,6 +51,7 @@ if ! curl -sf "$URL/api/health" >/dev/null; then
   exit 1
 fi
 
+echo "$PORT" > "$PORT_FILE"
 say "Server ready. Opening dashboard: $URL"
 open "$URL"
 if [ "$SCRAPE" = false ]; then

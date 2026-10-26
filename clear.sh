@@ -3,8 +3,10 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-if lsof -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "The dashboard server is running on port 8000 — stop it (Ctrl+C) before clearing." >&2
+source scripts/server.sh
+RUNNING=$(running_url)
+if [ -n "$RUNNING" ]; then
+  echo "The dashboard is running at $RUNNING — stop it (Ctrl+C) before clearing." >&2
   exit 1
 fi
 

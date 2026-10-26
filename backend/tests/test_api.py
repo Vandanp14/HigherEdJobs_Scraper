@@ -87,3 +87,8 @@ def test_every_endpoint_runs_on_the_event_loop():
 
     sync = [route.path for route in main.app.routes if isinstance(route, APIRoute) and not inspect.iscoroutinefunction(route.endpoint)]
     assert sync == []
+
+
+def test_health_identifies_this_app():
+    # Scripts use this to tell this dashboard apart from another project on the same port.
+    assert TestClient(main.app).get("/api/health").json() == {"ok": True, "app": "higheredjobs-review"}

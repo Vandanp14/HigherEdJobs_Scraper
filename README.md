@@ -11,9 +11,11 @@ Local job discovery and sponsorship-language review based on `HigherEdJobs_PRD.m
 | `./view.sh` | Open the dashboard with the jobs already saved. Nothing is scraped or wiped. |
 | `./clear.sh` | Wipe saved jobs only. Refuses while the server is running. |
 
+The dashboard uses port 8000, or the first free port up to 8010 if another project holds 8000; the terminal prints the URL. The scripts recognise this dashboard by its `/api/health` response, so only it, not another project, blocks `clear.sh` and a second `run.sh`. The development setup below still assumes port 8000.
+
 `./clear.sh` (and so `./daily.sh`) **wipes all saved jobs**, including application statuses (Opened, Applied, Skipped) and notes. The saved browser session in `data/browser-state.json` is kept.
 
-`./run.sh` rebuilds the dashboard if its source changed, serves the API and dashboard at `http://127.0.0.1:8000`, opens it, and starts the HigherEdJobs and AIR runs. Saved jobs show immediately; new ones appear as they are fetched.
+`./run.sh` rebuilds the dashboard if its source changed, serves the API and dashboard, opens it, and starts the HigherEdJobs and AIR runs. Saved jobs show immediately; new ones appear as they are fetched.
 
 HigherEdJobs runs only look back **14 days**: older listings are skipped, and each search stops
 paging once a whole results page is older than that. Listings with no date are kept. Change it with
