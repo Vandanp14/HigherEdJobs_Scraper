@@ -18,6 +18,14 @@ If HigherEdJobs asks for human verification, you hear a sound and the terminal p
 
 Each job page is opened once per run, even when several search groups match it. The "University IT Titles" group repeats the Software and Systems queries, so it is off by default; re-enable it under **Search sources** if wanted.
 
+The terminal prints timestamped progress: each search group and results page, every job as
+`✓` saved, `✗` failed (with the reason), or `↺` already fetched by an earlier group, and totals
+when each source finishes.
+
+Only one browser window opens, for HigherEdJobs, and it reuses two tabs for the whole run so it
+does not keep pulling you back to its desktop. AIR runs without a window because it has no
+verification.
+
 Press `Ctrl+C` to stop.
 
 ## Start the app for development

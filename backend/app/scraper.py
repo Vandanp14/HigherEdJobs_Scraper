@@ -29,6 +29,9 @@ class HigherEdJobsScraper:
         # Set after one unsolved verification so the rest of the run fails fast instead of
         # waiting the full timeout again for every group and listing.
         self.verification_abandoned = False
+        # One search tab and one job tab per browser context, reused for the whole run. Opening a
+        # tab activates the browser and pulls the user to its desktop, so tabs are never opened per job.
+        self._tabs: dict[BrowserContext, tuple] = {}
 
     async def run(self, group_ids: list[str] | None = None):
         groups = [group for group in self.database.groups() if group["enabled"] and (not group_ids or group["id"] in group_ids)]
@@ -59,47 +62,51 @@ class HigherEdJobsScraper:
     async def _run_group(self, context: BrowserContext, group: dict, fetched: dict[str, int], errors: list[dict]):
         name = group["name"]
         report(HEJ, f"{name}: searching")
-        page = await context.new_page(); page.set_default_timeout(self.settings.timeout_ms)
-        try:
-            await page.goto(ADVANCED, wait_until="domcontentloaded"); await self._ensure_access(page)
-            keyword = page.get_by_role("textbox", name="Keyword Use quotes to search")
-            await keyword.fill(group["query"]); await page.get_by_role("button", name="Search Jobs").click()
-            await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page)
-            seen=set(); discovered=new=updated=failed=0; page_number=1
-            while True:
-                html=await page.content(); now=datetime.now(timezone.utc); listings=parse_results(html, page.url, now)
-                report(HEJ, f"{name} page {page_number}: {len(listings)} listings")
-                for listing in listings:
-                    key=listing.higheredjobs_url
-                    if key in seen: continue
-                    seen.add(key); discovered += 1
-                    label = listing.title or key
-                    if key in fetched:
-                        self.database.add_match(fetched[key], group["id"])
-                        report(HEJ, f"  ↺ {label} — already fetched; added to {name}"); continue
-                    detail=await context.new_page()
-                    try:
-                        await detail.goto(key, wait_until="domcontentloaded"); await self._ensure_access(detail)
-                        full=parse_job(await detail.content(), detail.url, now)
-                        for field in ("title","institution","location","city","state","salary","posted_date"):
-                            setattr(full, field, getattr(full, field) or getattr(listing, field))
-                        fetched[key], is_new = self.database.upsert_job(full,group["id"]); new += int(is_new); updated += int(not is_new)
-                        report(HEJ, f"  ✓ {full.title or label} — {full.institution or 'unknown institution'}")
-                    except Exception as error:
-                        # One bad page (timeout, block, unparseable) must not end the group.
-                        listing.description_status = "Failed"
-                        fetched[key], _ = self.database.upsert_job(listing,group["id"]); updated += 1; failed += 1
-                        errors.append({"group":name,"listing_url":key,"error":str(error)})
-                        report(HEJ, f"  ✗ {label} — {str(error).splitlines()[0] if str(error) else type(error).__name__}")
-                    finally: await detail.close(); await asyncio.sleep(self.settings.request_delay)
-                next_link=page.get_by_role("link", name="Next page")
-                if await next_link.count() and await next_link.is_visible():
-                    await next_link.click(); await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page); await asyncio.sleep(self.settings.request_delay)
-                    page_number += 1
-                else: break
-            report(HEJ, f"{name} done: {discovered} listings, {new} new, {failed} failed")
-            return discovered,new,updated
-        finally: await page.close()
+        page, detail = await self._tabs_for(context)
+        await page.goto(ADVANCED, wait_until="domcontentloaded"); await self._ensure_access(page)
+        keyword = page.get_by_role("textbox", name="Keyword Use quotes to search")
+        await keyword.fill(group["query"]); await page.get_by_role("button", name="Search Jobs").click()
+        await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page)
+        seen=set(); discovered=new=updated=failed=0; page_number=1
+        while True:
+            html=await page.content(); now=datetime.now(timezone.utc); listings=parse_results(html, page.url, now)
+            report(HEJ, f"{name} page {page_number}: {len(listings)} listings")
+            for listing in listings:
+                key=listing.higheredjobs_url
+                if key in seen: continue
+                seen.add(key); discovered += 1
+                label = listing.title or key
+                if key in fetched:
+                    self.database.add_match(fetched[key], group["id"])
+                    report(HEJ, f"  ↺ {label} — already fetched; added to {name}"); continue
+                try:
+                    await detail.goto(key, wait_until="domcontentloaded"); await self._ensure_access(detail)
+                    full=parse_job(await detail.content(), detail.url, now)
+                    for field in ("title","institution","location","city","state","salary","posted_date"):
+                        setattr(full, field, getattr(full, field) or getattr(listing, field))
+                    fetched[key], is_new = self.database.upsert_job(full,group["id"]); new += int(is_new); updated += int(not is_new)
+                    report(HEJ, f"  ✓ {full.title or label} — {full.institution or 'unknown institution'}")
+                except Exception as error:
+                    # One bad page (timeout, block, unparseable) must not end the group.
+                    listing.description_status = "Failed"
+                    fetched[key], _ = self.database.upsert_job(listing,group["id"]); updated += 1; failed += 1
+                    errors.append({"group":name,"listing_url":key,"error":str(error)})
+                    report(HEJ, f"  ✗ {label} — {str(error).splitlines()[0] if str(error) else type(error).__name__}")
+                finally: await asyncio.sleep(self.settings.request_delay)
+            next_link=page.get_by_role("link", name="Next page")
+            if await next_link.count() and await next_link.is_visible():
+                await next_link.click(); await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page); await asyncio.sleep(self.settings.request_delay)
+                page_number += 1
+            else: break
+        report(HEJ, f"{name} done: {discovered} listings, {new} new, {failed} failed")
+        return discovered,new,updated
+
+    async def _tabs_for(self, context: BrowserContext):
+        if context not in self._tabs:
+            tabs = (await context.new_page(), await context.new_page())
+            for tab in tabs: tab.set_default_timeout(self.settings.timeout_ms)
+            self._tabs[context] = tabs
+        return self._tabs[context]
 
     async def _ensure_access(self, page):
         if self.settings.headless:
@@ -136,8 +143,9 @@ class AIRScraper:
         report("AIR", "Loading AIR Career Center board")
         try:
             async with async_playwright() as playwright:
+                # AIR has no human verification, so it never needs a window that would steal focus.
                 browser = await playwright.chromium.launch(
-                    headless=self.settings.headless,
+                    headless=True,
                     channel=self.settings.browser_channel,
                 )
                 context = (
@@ -156,9 +164,10 @@ class AIRScraper:
                         )
                         discovered = len(listings)
                         report("AIR", f"Found {discovered} listings")
+                        detail = await context.new_page()
+                        detail.set_default_timeout(self.settings.timeout_ms)
                         for index, listing in enumerate(listings, 1):
                             label = f"({index}/{discovered})"
-                            detail = await context.new_page()
                             try:
                                 await detail.goto(
                                     listing.source_url, wait_until="domcontentloaded"
@@ -212,7 +221,6 @@ class AIRScraper:
                                 )
                                 report("AIR", f"  {label} ✗ {listing.title or listing.source_url} — {error}")
                             finally:
-                                await detail.close()
                                 await asyncio.sleep(self.settings.request_delay)
                     finally:
                         await page.close()

@@ -29,8 +29,10 @@ class FakePage:
 
 
 class FakeContext:
-    def __init__(self): self.detail_loads = 0
-    async def new_page(self): return FakePage(self)
+    def __init__(self): self.detail_loads = self.pages_opened = 0
+    async def new_page(self):
+        self.pages_opened += 1
+        return FakePage(self)
 
 
 def test_listing_in_two_groups_is_fetched_once_and_matched_twice(tmp_path, monkeypatch):
@@ -151,3 +153,43 @@ def test_air_progress_messages_count_listings(tmp_path, monkeypatch, capsys):
     assert "[AIR] Found 2 listings" in out
     assert "(2/2) ✓ Analyst 2 — AIR U" in out
     assert "[AIR] Finished in" in out
+
+
+def test_run_reuses_two_tabs_instead_of_opening_one_per_job(tmp_path, monkeypatch):
+    # Every new tab activates the browser and pulls the user to its desktop.
+    listings = [JobDraft(higheredjobs_url=f"https://www.higheredjobs.com/details.cfm?JobCode={n}") for n in range(3)]
+    monkeypatch.setattr(scraper, "parse_results", lambda html, url, now: listings)
+    monkeypatch.setattr(scraper, "parse_job", lambda html, url, now: JobDraft(higheredjobs_url=url, normalized_description="Text"))
+    job_scraper = scraper.HigherEdJobsScraper(Database(tmp_path / "jobs.sqlite3"), replace(Settings(), request_delay=0, headless=True))
+    context = FakeContext()
+
+    async def two_groups():
+        await job_scraper._run_group(context, {"id": "data", "name": "Data", "query": "q"}, {}, [])
+        await job_scraper._run_group(context, {"id": "web", "name": "Web", "query": "q"}, {}, [])
+
+    asyncio.run(two_groups())
+    assert context.pages_opened == 2
+
+
+def test_air_reuses_one_detail_tab(tmp_path, monkeypatch):
+    monkeypatch.setattr(FakeContext, "close", lambda self: _value(None), raising=False)
+    context = FakeContext()
+    listings = [JobDraft(source="air", source_url=f"https://www.airweb.org/community/Career-Center/{n}") for n in range(3)]
+    monkeypatch.setattr(scraper, "async_playwright", lambda: FakePlaywright(context))
+    monkeypatch.setattr(scraper, "parse_air_results", lambda html, url, now: listings)
+    monkeypatch.setattr(scraper, "parse_air_job", lambda html, url, now: JobDraft(source="air", source_url=url, normalized_description="Text"))
+    asyncio.run(scraper.AIRScraper(Database(tmp_path / "jobs.sqlite3"), replace(Settings(), request_delay=0, headless=True)).run())
+    assert context.pages_opened == 2
+
+
+def test_air_runs_headless_so_it_opens_no_window(tmp_path, monkeypatch):
+    # AIR has no human verification, so a visible window would only steal focus.
+    launches = []
+    monkeypatch.setattr(FakeContext, "close", lambda self: _value(None), raising=False)
+    playwright = FakePlaywright(FakeContext())
+    browser = FakeBrowser(FakeContext())
+    playwright.chromium = type("Chromium", (), {"launch": staticmethod(lambda **options: launches.append(options) or _value(browser))})()
+    monkeypatch.setattr(scraper, "async_playwright", lambda: playwright)
+    monkeypatch.setattr(scraper, "parse_air_results", lambda html, url, now: [])
+    asyncio.run(scraper.AIRScraper(Database(tmp_path / "jobs.sqlite3"), replace(Settings(), headless=False)).run())
+    assert launches[0]["headless"] is True
