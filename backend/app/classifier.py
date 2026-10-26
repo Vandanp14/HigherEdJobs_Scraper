@@ -25,9 +25,14 @@ COUNTRIES = r"(?:china|canada|the\s+uk|united\s+kingdom|qatar|the\s+uae|uae|sing
 NOISE = re.compile(
     r"\b\w+-sponsored\b|"
     r"\bsponsored\s+(?:research|projects?|programs?|events?|activities|volunteer\w*|travel|trips?)\b|"
-    r"\b(?:sponsors?\s+)?(?:working\s+|work\s+)?visas?\b[^.\n]{0,60}?\bin\s+" + COUNTRIES + r"\b",
+    r"\b(?:sponsors?\s+)?(?:working\s+|work\s+)?visas?\b[^.\n]{0,60}?\bin\s+" + COUNTRIES + r"\b|"
+    r"\b(?:does\s+not|doesn't|do\s+not)\s+require\s+(?:an?\s+)?(?:active\s+)?security\s+clearance\b",
     re.I,
 )
+FUTURE = r"(?:now\s+or\s+in\s+the\s+future|now\s+or\s+future|current(?:ly)?\s+or\s+(?:in\s+the\s+)?future)"
+REFUSAL_WORD = r"\b(?:without|not|no|unable|cannot|can't|won't)\b"
+# A bare "sponsor" with none of these nearby is about events, research, or founders, not visas.
+VISA_CONTEXT = re.compile(r"visa|immigra|h[-‑–]?1b|employ|work\s+auth|authoriz|status|petition|green\s+card")
 HEDGE = re.compile(r"\bmay\b|\bmight\b|not\s+guaranteed")
 FORM_FIELD = re.compile(
     r"^[^\n]*(?:sponsor|visa)[^\n]*:[ \t]*(?:\n[ \t]*)*(yes|no)[ \t]*(?=\n|$)", re.I | re.M,
@@ -51,7 +56,8 @@ NEGATIVE = [
     r"\bwithout\s+(?:(?:current|future)\s+(?:(?:or|and)\s+)?){0,2}(?:visa\s+|employer\s+)?sponsorship\b",
     r"\bno\s+(?:visa\s+|h[-‑–]?1b\s+)?sponsorship\s+(?:is\s+)?(?:available|provided|offered)\b",
     # The H-1B step comes later for an OPT holder, so refusing future sponsorship is decisive.
-    r"\bsponsor\w*\b.{0,60}\b(?:now\s+or\s+in\s+the\s+future|now\s+or\s+future|current\s+or\s+future)\b",
+    r"\bsponsorship\b[^.]{0,50}?\b(?:is|are|will\s+be)\s+not\s+(?:available|provided|offered|possible)\b",
+    r"\b(?:obtain|maintain|hold)\b.{0,40}\bsecurity\s+clearance\b",
     r"\b(?:only\s+(?:u\.?s\.?\s+)?citizens|must\s+be\s+a\s+u\.?s\.?\s+citizen|"
     r"(?:u\.?s\.?\s+)?citizenship\s+(?:is\s+)?required|permanent\s+residents?\s+only|green\s+card\s+required)\b",
     r"\b(?:(?:must|required\s+to)\s+(?:have|hold|obtain)\b.{0,40}security\s+clearance|"
@@ -114,11 +120,16 @@ def rate(sentence: str) -> tuple[float, str, str] | None:
     if not found:
         return None
     hedged = bool(HEDGE.search(lowered))
-    if any(re.search(p, lowered) for p in NEGATIVE):
+    future_refusal = re.search(REFUSAL_WORD, lowered) and (
+        re.search(r"\bsponsor\w*\b.{0,60}\b" + FUTURE, lowered) or re.search(FUTURE + r".{0,60}\bsponsor\w*\b", lowered)
+    )
+    if future_refusal or any(re.search(p, lowered) for p in NEGATIVE):
         # A hedge keeps a job visible: false "Not Worth It" is the costliest mistake.
         return (2, "Likely No Sponsorship", "Medium") if hedged else (4, "Not Worth It", "High")
     if any(re.search(p, lowered) for p in POSITIVE) and not re.search(r":\s*no\b", lowered):
         return 3, "Sponsorship Possible", "Medium" if hedged or "considered" in lowered else "High"
+    if all(re.fullmatch(r"sponsor\w*", term) for term in found) and not VISA_CONTEXT.search(lowered):
+        return None
     if hedged and re.search(r"\bnot\b|\bno\b", lowered) and re.search(r"sponsor|visa|h[-‑–]?1b", lowered):
         return 2, "Likely No Sponsorship", "Medium"
     if any(re.search(p, lowered) for p in LIKELY):

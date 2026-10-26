@@ -3,9 +3,9 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .classifier import classify
+from .classifier import VERSION, classify
 from .config import SEARCH_GROUPS
-from .parser import JobDraft
+from .parser import JobDraft, normalize_air_description, normalize_hej_description
 
 
 def utcnow() -> str:
@@ -77,6 +77,7 @@ class Database:
                 "application_due_date": "TEXT",
             },
             "scrape_runs": {"source": "TEXT NOT NULL DEFAULT 'higheredjobs'"},
+            "sponsorship_analysis": {"signals": "TEXT NOT NULL DEFAULT '[]'"},
         }
         for table, columns in migrations.items():
             existing = {
@@ -223,8 +224,7 @@ class Database:
         if group_id:
             self._record_match(job_id, group_id, now)
         if draft.normalized_description:
-            result = classify(draft.normalized_description).as_dict()
-            self.connection.execute("INSERT INTO sponsorship_analysis(job_id,status,confidence,evidence,evidence_context,matched_terms,classifier_version,analyzed_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET status=excluded.status,confidence=excluded.confidence,evidence=excluded.evidence,evidence_context=excluded.evidence_context,matched_terms=excluded.matched_terms,classifier_version=excluded.classifier_version,analyzed_at=excluded.analyzed_at", (job_id, result["status"], result["confidence"], result["evidence"], result["evidence_context"], json.dumps(result["matched_terms"]), result["classifier_version"], now))
+            self._store_analysis(job_id, draft.normalized_description, draft.institution, now)
         self.connection.commit()
         return job_id, is_new
 
@@ -279,7 +279,7 @@ class Database:
         order = {"oldest":"COALESCE(j.posted_date, substr(j.first_seen_at,1,10)) ASC", "first_seen":"j.first_seen_at DESC", "institution":"j.institution COLLATE NOCASE", "title":"j.title COLLATE NOCASE", "state":"j.state COLLATE NOCASE"}.get(sort, "COALESCE(j.posted_date, substr(j.first_seen_at,1,10)) DESC")
         where = " AND ".join(clauses)
         total = self.connection.execute(f"SELECT COUNT(*) FROM jobs j LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id WHERE {where}", values).fetchone()[0]
-        rows = self.connection.execute(f"""SELECT j.*, COALESCE(sa.status,'Unavailable') sponsorship_status, COALESCE(sa.confidence,'-') confidence, sa.evidence, sa.evidence_context, sa.matched_terms, GROUP_CONCAT(sg.name, ' | ') search_groups FROM jobs j LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id LEFT JOIN job_search_matches jm ON jm.job_id=j.id LEFT JOIN search_groups sg ON sg.id=jm.search_group_id WHERE {where} GROUP BY j.id ORDER BY {order}, j.id DESC LIMIT ? OFFSET ?""", values + [per_page, (page - 1) * per_page]).fetchall()
+        rows = self.connection.execute(f"""SELECT j.*, COALESCE(sa.status,'Unavailable') sponsorship_status, COALESCE(sa.confidence,'-') confidence, sa.evidence, sa.evidence_context, sa.matched_terms, COALESCE(sa.signals,'[]') signals, GROUP_CONCAT(sg.name, ' | ') search_groups FROM jobs j LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id LEFT JOIN job_search_matches jm ON jm.job_id=j.id LEFT JOIN search_groups sg ON sg.id=jm.search_group_id WHERE {where} GROUP BY j.id ORDER BY {order}, j.id DESC LIMIT ? OFFSET ?""", values + [per_page, (page - 1) * per_page]).fetchall()
         return {"items": [dict(row) | {"active":bool(row["active"]), "matched_terms":json.loads(row["matched_terms"] or "[]")} for row in rows], "total": total, "page": page, "per_page": per_page}
 
     def update_job(self, job_id: int, values: dict):
@@ -291,9 +291,37 @@ class Database:
     def mark_opened(self, job_id: int):
         self.connection.execute("UPDATE jobs SET application_status=CASE WHEN application_status='New' THEN 'Opened' ELSE application_status END, updated_at=? WHERE id=?", (utcnow(),job_id)); self.connection.commit()
 
-    def reanalyze(self):
-        rows = self.connection.execute("SELECT id,normalized_description FROM jobs WHERE normalized_description IS NOT NULL").fetchall()
+    def _store_analysis(self, job_id: int, description: str, institution: str | None, now: str):
+        result = classify(description, institution).as_dict()
+        self.connection.execute(
+            "INSERT INTO sponsorship_analysis(job_id,status,confidence,evidence,evidence_context,matched_terms,classifier_version,analyzed_at,signals) "
+            "VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET status=excluded.status,confidence=excluded.confidence,"
+            "evidence=excluded.evidence,evidence_context=excluded.evidence_context,matched_terms=excluded.matched_terms,"
+            "classifier_version=excluded.classifier_version,analyzed_at=excluded.analyzed_at,signals=excluded.signals",
+            (job_id, result["status"], result["confidence"], result["evidence"], result["evidence_context"],
+             json.dumps(result["matched_terms"]), result["classifier_version"], now, json.dumps(result["signals"])),
+        )
+
+    def reanalyze(self, only_outdated: bool = False) -> int:
+        """Re-clean each description and classify it again. raw_description is never changed; the
+        cleaned text replaces normalized_description so evidence stays a substring of what is shown."""
+        query = (
+            "SELECT j.id, j.source, j.raw_description, j.normalized_description, j.institution FROM jobs j "
+            "LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id WHERE j.normalized_description IS NOT NULL"
+        )
+        if only_outdated:
+            query += " AND (sa.classifier_version IS NULL OR sa.classifier_version != ?)"
+        rows = self.connection.execute(query, (VERSION,) if only_outdated else ()).fetchall()
         for row in rows:
-            result = classify(row["normalized_description"]).as_dict(); now=utcnow()
-            self.connection.execute("INSERT INTO sponsorship_analysis(job_id,status,confidence,evidence,evidence_context,matched_terms,classifier_version,analyzed_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET status=excluded.status,confidence=excluded.confidence,evidence=excluded.evidence,evidence_context=excluded.evidence_context,matched_terms=excluded.matched_terms,classifier_version=excluded.classifier_version,analyzed_at=excluded.analyzed_at", (row["id"],result["status"],result["confidence"],result["evidence"],result["evidence_context"],json.dumps(result["matched_terms"]),result["classifier_version"],now))
-        self.connection.commit(); return len(rows)
+            if row["raw_description"]:
+                normalize = normalize_air_description if row["source"] == "air" else normalize_hej_description
+                text = normalize(row["raw_description"])
+            else:
+                # Compacted rows lost their HTML; strip any tags left in the stored text.
+                text = normalize_hej_description(row["normalized_description"])
+            text = text or row["normalized_description"]
+            now = utcnow()
+            self.connection.execute("UPDATE jobs SET normalized_description=? WHERE id=?", (text, row["id"]))
+            self._store_analysis(row["id"], text, row["institution"], now)
+        self.connection.commit()
+        return len(rows)
