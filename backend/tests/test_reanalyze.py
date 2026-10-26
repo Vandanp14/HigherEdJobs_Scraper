@@ -48,3 +48,24 @@ def test_startup_relabel_only_touches_old_versions(tmp_path):
     assert db.reanalyze(only_outdated=True) == 1
     assert analysis(db, old)["classifier_version"] == VERSION
     assert analysis(db, current)["analyzed_at"] == "2000-01-02"
+
+
+def test_html_entities_in_title_and_institution_are_decoded(tmp_path):
+    db = Database(tmp_path / "jobs.sqlite3")
+    job_id, _ = db.upsert_job(JobDraft(higheredjobs_url="https://h/1", title="Systems R&amp;D Engineer", institution="William &amp; Mary"))
+    row = db.connection.execute("SELECT title, institution FROM jobs WHERE id=?", (job_id,)).fetchone()
+    assert (row["title"], row["institution"]) == ("Systems R&D Engineer", "William & Mary")
+
+
+def test_reanalyze_decodes_titles_saved_before_the_fix(tmp_path):
+    db = Database(tmp_path / "jobs.sqlite3")
+    job_id, _ = db.upsert_job(JobDraft(higheredjobs_url="https://h/1", normalized_description="Text."))
+    db.connection.execute("UPDATE jobs SET title='BI &amp; Data' WHERE id=?", (job_id,))
+    db.reanalyze()
+    assert db.connection.execute("SELECT title FROM jobs WHERE id=?", (job_id,)).fetchone()[0] == "BI & Data"
+
+
+def test_double_escaped_title_is_fully_decoded(tmp_path):
+    db = Database(tmp_path / "jobs.sqlite3")
+    job_id, _ = db.upsert_job(JobDraft(higheredjobs_url="https://h/1", title="Earth &amp;amp; Environment"))
+    assert db.connection.execute("SELECT title FROM jobs WHERE id=?", (job_id,)).fetchone()[0] == "Earth & Environment"

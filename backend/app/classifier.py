@@ -53,6 +53,7 @@ NEGATIVE = [
     r"\b(?:does|do|will)\s+not\s+(?:sponsor|transfer|take\s+over|assume)\b"
     r".{0,100}\b(?:visa|sponsorship|employment\s+authorization|immigration)\b",
     r"\bnot\s+eligible\s+for\s+(?:\w+[ -]){0,3}sponsorship\b",
+    r"\b(?:is|are)\s+not\s+an?\s+(?:visa\s+)?sponsoring\s+(?:agency|employer|institution)\b",
     r"\bwithout\s+(?:(?:current|future)\s+(?:(?:or|and)\s+)?){0,2}(?:visa\s+|employer\s+)?sponsorship\b",
     r"\bno\s+(?:visa\s+|h[-‑–]?1b\s+)?sponsorship\s+(?:is\s+)?(?:available|provided|offered)\b",
     # The H-1B step comes later for an OPT holder, so refusing future sponsorship is decisive.

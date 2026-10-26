@@ -92,3 +92,22 @@ def test_every_endpoint_runs_on_the_event_loop():
 def test_health_identifies_this_app():
     # Scripts use this to tell this dashboard apart from another project on the same port.
     assert TestClient(main.app).get("/api/health").json() == {"ok": True, "app": "higheredjobs-review"}
+
+
+def test_sponsorship_filter_accepts_list_and_single(tmp_path):
+    original = main.database
+    main.database = Database(tmp_path / "jobs.sqlite3")
+    try:
+        for code, date, text in [
+            ("1", "2026-10-20", "Visa sponsorship is not available."),
+            ("2", "2026-10-21", "Visa status questions go to HR."),
+            ("3", "2026-10-22", "Visa sponsorship is available."),
+        ]:
+            main.database.upsert(JobDraft(higheredjobs_url=f"https://h/{code}", posted_date=date, normalized_description=text))
+        client = TestClient(main.app)
+        both = client.get("/api/jobs?days=all&sponsorship=Unsure%20-%20Review,Sponsorship%20Possible").json()["items"]
+        assert [item["posted_date"] for item in both] == ["2026-10-22", "2026-10-21"]
+        assert client.get("/api/jobs?days=all&sponsorship=Not%20Worth%20It").json()["total"] == 1
+        assert client.get("/api/jobs?days=all&sponsorship=").json()["total"] == 3
+    finally:
+        main.database = original

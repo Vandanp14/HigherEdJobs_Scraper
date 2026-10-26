@@ -1,3 +1,4 @@
+import html
 import json
 import sqlite3
 from datetime import datetime, timezone
@@ -6,6 +7,18 @@ from pathlib import Path
 from .classifier import VERSION, classify
 from .config import SEARCH_GROUPS
 from .parser import JobDraft, normalize_air_description, normalize_hej_description
+
+
+def decode_entities(text: str | None) -> str | None:
+    """Undo HTML escaping, including the double escaping ("&amp;amp;") some listings use."""
+    for _ in range(3):
+        if not text or "&" not in text:
+            break
+        decoded = html.unescape(text)
+        if decoded == text:
+            break
+        text = decoded
+    return text
 
 
 def utcnow() -> str:
@@ -147,6 +160,8 @@ class Database:
 
     def upsert_job(self, draft: JobDraft, group_id: str | None = None) -> tuple[int, bool]:
         now = utcnow()
+        # Listing pages and JSON-LD sometimes leave entities like "&amp;" in names.
+        draft.title, draft.institution = decode_entities(draft.title), decode_entities(draft.institution)
         source = draft.source or "higheredjobs"
         source_url = draft.source_url or draft.higheredjobs_url
         source_job_id = draft.source_job_id or draft.higheredjobs_id
@@ -265,7 +280,9 @@ class Database:
                 placeholders = ",".join("?" for _ in group_ids)
                 clauses.append(f"EXISTS (SELECT 1 FROM job_search_matches gm WHERE gm.job_id=j.id AND gm.search_group_id IN ({placeholders}))")
                 values.extend(group_ids)
-        if sponsorship: clauses.append("sa.status=?"); values.append(sponsorship)
+        statuses = [status for status in sponsorship.split(",") if status]
+        if statuses:
+            clauses.append(f"sa.status IN ({','.join('?' * len(statuses))})"); values.extend(statuses)
         if description == "complete":
             clauses.append("j.normalized_description IS NOT NULL AND TRIM(j.normalized_description) != ''")
         elif description == "missing":
@@ -306,7 +323,7 @@ class Database:
         """Re-clean each description and classify it again. raw_description is never changed; the
         cleaned text replaces normalized_description so evidence stays a substring of what is shown."""
         query = (
-            "SELECT j.id, j.source, j.raw_description, j.normalized_description, j.institution FROM jobs j "
+            "SELECT j.id, j.source, j.raw_description, j.normalized_description, j.title, j.institution FROM jobs j "
             "LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id WHERE j.normalized_description IS NOT NULL"
         )
         if only_outdated:
@@ -322,6 +339,10 @@ class Database:
             text = text or row["normalized_description"]
             now = utcnow()
             self.connection.execute("UPDATE jobs SET normalized_description=? WHERE id=?", (text, row["id"]))
+            self.connection.execute(
+                "UPDATE jobs SET title=?, institution=? WHERE id=?",
+                (decode_entities(row["title"]), decode_entities(row["institution"]), row["id"]),
+            )
             self._store_analysis(row["id"], text, row["institution"], now)
         self.connection.commit()
         return len(rows)

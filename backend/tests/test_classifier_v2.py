@@ -113,3 +113,7 @@ def test_more_real_refusals(description):
 ])
 def test_more_real_noise(description):
     assert classify(description).status == "No Mention Found"
+
+
+def test_not_a_sponsoring_agency():
+    check("Chico State is not a sponsoring agency for staff and management positions (i.e. H-1B Visas).", "Not Worth It")

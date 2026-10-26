@@ -62,6 +62,20 @@ previously verified session).
 
 ## Use the dashboard
 
+Sponsorship labels are tuned for an F-1 → OPT → STEM OPT → cap-exempt H-1B path (classifier 2.0.0):
+
+- **Not Worth It** — a plain refusal, including refusing sponsorship "now or in the future", a
+  "Sponsorship available: No" field, U.S.-citizens-only, or a required security clearance.
+- **Likely No Sponsorship** — hedged wording such as "may not be eligible for sponsorship". Kept visible.
+- **Sponsorship Possible** — sponsorship available or considered, or "Sponsorship available: Yes".
+- **Unsure - Review** — visa wording that matches no rule.
+- **No Mention Found** — nothing about sponsorship. "Must be authorized to work in the U.S." alone lands
+  here, because OPT meets it; the sentence is still shown as evidence.
+
+Badges under the label: **E-Verify** (needed for STEM OPT), **Cap-exempt**, and a **Non-college employer**
+warning (often not cap-exempt). Pick several sponsorship labels at once with the Sponsorship chips;
+results stay newest first. Saved jobs are re-labelled automatically when the classifier version changes.
+
 1. Click **Run HigherEdJobs** to run every enabled keyword query, or **Run AIR Career Center** to fetch AIR directly without running HigherEdJobs searches.
 2. Use **Search sources** to enable or disable the eight HigherEdJobs groups and run either source.
 3. Filter by source, date, search group, sponsorship signal, application status, or text.

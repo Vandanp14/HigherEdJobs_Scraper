@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bookmark, ChevronDown, ExternalLink, History, LayoutList, LoaderCircle, Play, RefreshCw, Search, Settings2 } from 'lucide-react';
+import { ChevronDown, ExternalLink, LoaderCircle, Play, RefreshCw, Search, Settings2 } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 
@@ -16,6 +16,7 @@ type Job = {
   search_groups: string | null;
   sponsorship_status: string;
   confidence: string;
+  signals: string;
   evidence: string | null;
   evidence_context: string | null;
   normalized_description: string | null;
@@ -39,6 +40,13 @@ const request = async (path: string, init?: RequestInit) => {
   const response = await fetch('/api' + path, init);
   if (!response.ok) throw new Error(await response.text());
   return response.json();
+};
+const parseSignals = (value: string | undefined): string[] => {
+  try {
+    return value ? JSON.parse(value) : [];
+  } catch {
+    return [];
+  }
 };
 const signalClass = (signal: string) => ({
   'Not Worth It': 'signal-stop',
@@ -68,6 +76,7 @@ function App() {
   const update = (key: string, value: string) => setFilters(current => ({ ...current, [key]: value }));
   const sourceFilter = filters.source;
   const selectedGroups = filters.group ? filters.group.split(',') : [];
+  const selectedSignals = filters.sponsorship ? filters.sponsorship.split(',') : [];
 
   const load = async () => {
     setLoading(true);
@@ -201,24 +210,23 @@ function App() {
   const toggleGroup = (id: string) => update('group', selectedGroups.includes(id)
     ? selectedGroups.filter(item => item !== id).join(',')
     : [...selectedGroups, id].join(','));
+  const toggleSignal = (status: string) => update('sponsorship', selectedSignals.includes(status)
+    ? selectedSignals.filter(item => item !== status).join(',')
+    : [...selectedSignals, status].join(','));
+  const sponsorshipLabels = [['Not Worth It', 'Not worth it'], ['Likely No Sponsorship', 'Likely no sponsorship'], ['Unsure - Review', 'Review needed'], ['No Mention Found', 'No mention found'], ['Sponsorship Possible', 'Sponsorship possible']];
   const options: [string, string[][]][] = [
     ['days', [['0', 'Today'], ['3', 'Past 3 days'], ['7', 'Past 7 days'], ['14', 'Past 14 days'], ['30', 'Past 30 days'], ['all', 'All time']]],
-    ['sponsorship', [['', 'All sponsorship signals'], ['Not Worth It', 'Not worth it'], ['Likely No Sponsorship', 'Likely no sponsorship'], ['Unsure - Review', 'Review needed'], ['No Mention Found', 'No mention found'], ['Sponsorship Possible', 'Sponsorship possible']]],
     ['description', [['complete', 'Complete only'], ['', 'Any description state'], ['missing', 'Missing description'], ['failed', 'Failed to capture']]],
     ['application_status', [['', 'Open work'], ['New', 'New'], ['Opened', 'Opened'], ['Applied', 'Applied'], ['Skipped', 'Skipped']]],
     ['sort', [['newest', 'Newest posted'], ['oldest', 'Oldest posted'], ['first_seen', 'First seen'], ['institution', 'Institution'], ['title', 'Job title'], ['state', 'State']]],
   ];
 
   return <div className="workspace">
-    <aside className="sidebar">
-      <div className="brand"><span>HEJ</span><div><b>HigherEdJobs</b><small>Review workspace</small></div></div>
-      <nav><a className="active"><LayoutList size={17} /> Job queue</a><a><Bookmark size={17} /> Saved views</a><a><History size={17} /> Run history</a></nav>
-      <div className="sidebar-bottom"><button onClick={() => setShowSources(!showSources)}><Settings2 size={16} /> Search sources</button><small>Local workspace<br />Your data stays on this device.</small></div>
-    </aside>
     <main className="content">
       <header className="topbar">
-        <div><p className="breadcrumb">JOB QUEUE / ALL ACTIVE ROLES</p><h1>Job review queue</h1><p>Prioritize roles, inspect sponsorship wording, and track your next step.</p></div>
+        <div className="brand"><span>HEJ</span><div><h1>Job review queue</h1><small>Sponsorship wording for HigherEdJobs and AIR roles · data stays on this device</small></div></div>
         <div className="header-actions">
+          <button className="button secondary" aria-expanded={showSources} onClick={() => setShowSources(!showSources)}><Settings2 size={15} /> Search sources</button>
           <button className="button secondary" disabled={Boolean(activeRun)} onClick={reanalyze}>{activeRun === 'reanalyze' ? <LoaderCircle className="animate-spin" size={15} /> : <RefreshCw size={15} />} {activeRun === 'reanalyze' ? `Re-analyzing · ${elapsedLabel}` : 'Re-analyze saved jobs'}</button>
           <button className="button secondary air-button" disabled={Boolean(activeRun) || externalRun} onClick={runAir}>{activeRun === 'air' ? <LoaderCircle className="animate-spin" size={14} /> : <Play size={14} fill="currentColor" />} {activeRun === 'air' ? `Refreshing · ${elapsedLabel}` : 'Run AIR Career Center'}</button>
           <button className="button primary" disabled={Boolean(activeRun) || externalRun} onClick={runHigherEdJobs}>{activeRun === 'higheredjobs' ? <LoaderCircle className="animate-spin" size={14} /> : <Play size={14} fill="currentColor" />} {activeRun === 'higheredjobs' ? `Searching · ${elapsedLabel}` : 'Run HigherEdJobs'}</button>
@@ -226,29 +234,6 @@ function App() {
       </header>
       {notice && <p className="run-notice" role="status">{notice}</p>}
       {activeRun && <p className="run-progress" role="status"><LoaderCircle className="animate-spin" size={15} /><span><b>{activeRun === 'higheredjobs' ? 'HigherEdJobs search' : activeRun === 'air' ? 'AIR refresh' : 'Description re-analysis'} in progress</b><small>Elapsed {elapsedLabel}. Keep this tab open; do not refresh while it runs.</small></span></p>}
-      <section className="source-switcher" aria-label="Job source views">
-        <div className="source-switcher-heading">
-          <div><span className="eyebrow">SOURCE VIEWS</span><h2>Choose a job source</h2></div>
-          <p>Keep each portal's workflow visible while retaining one review queue.</p>
-        </div>
-        <div className="source-view-grid">
-          <button className={'source-view all-sources' + (!sourceFilter ? ' active' : '')} onClick={() => update('source', '')}>
-            <span className="source-view-mark">ALL</span>
-            <span><strong>All sources</strong><small>Unified review queue</small></span>
-            <span className="source-view-arrow">→</span>
-          </button>
-          <button className={'source-view highered-view' + (sourceFilter === 'higheredjobs' ? ' active' : '')} onClick={() => update('source', 'higheredjobs')}>
-            <span className="source-view-mark">HEJ</span>
-            <span><strong>HigherEdJobs</strong><small>Keyword search roles</small></span>
-            <span className="source-view-arrow">→</span>
-          </button>
-          <button className={'source-view air-view' + (sourceFilter === 'air' ? ' active' : '')} onClick={() => { update('source', 'air'); update('group', ''); }}>
-            <span className="source-view-mark">AIR</span>
-            <span><strong>AIR Career Center</strong><small>Curated data roles</small></span>
-            <span className="source-view-arrow">→</span>
-          </button>
-        </div>
-      </section>
       {showSources && <section className="sources">
         <div className="section-title"><div><h2>Search sources</h2><p>Run AIR independently or enable the keyword groups used by HigherEdJobs.</p></div><button className="icon-button" aria-label="Close search sources" onClick={() => setShowSources(false)}>×</button></div>
         <div className="source-grid">
@@ -265,17 +250,17 @@ function App() {
             {options.map(([key, values]) => <label key={key}><span>{key === 'days' ? 'Date' : key === 'sponsorship' ? 'Sponsorship' : key === 'description' ? 'Description' : key === 'application_status' ? 'Status' : 'Sort'}</span><select value={filters[key]} onChange={event => update(key, event.target.value)}>{values.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>)}
           </div>
         </div>
+        <div className="query-filter"><span>Sponsorship</span><button className={selectedSignals.length ? '' : 'selected'} onClick={() => update('sponsorship', '')}>All signals</button>{sponsorshipLabels.map(([status, label]) => <button key={status} aria-pressed={selectedSignals.includes(status)} className={selectedSignals.includes(status) ? 'selected' : ''} onClick={() => toggleSignal(status)}>{label}</button>)}</div>
         {sourceFilter !== 'air' && <div className="query-filter"><span>Query filter</span><button className={selectedGroups.length ? '' : 'selected'} onClick={() => update('group', '')}>All queries</button>{groups.map(group => <button key={group.id} className={selectedGroups.includes(group.id) ? 'selected' : ''} onClick={() => toggleGroup(group.id)}>{group.name}</button>)}</div>}
-        <div className="table-scroll"><table><thead><tr><th className="role-col">Role</th><th>Source</th><th>Location</th><th>Salary</th><th>Posted / Due</th><th>Sponsorship</th><th className="evidence-col">Evidence</th><th>Progress</th><th>Links</th></tr></thead><tbody>{jobs.map(job => <>{<tr key={job.id}>
-          <td className="role"><strong>{job.title || 'Untitled listing'}</strong><span>{job.institution || 'Institution unavailable'}</span></td>
-          <td><span className={'source-badge source-' + job.source}>{job.source === 'air' ? 'AIR' : 'HigherEdJobs'}</span>{job.search_groups && <small className="source-meta">{job.search_groups}</small>}</td>
-          <td>{job.location || '—'}</td><td>{job.salary || '—'}</td>
-          <td className="date">{job.source === 'air' ? <><span>Due {job.application_due_date || '—'}</span></> : <>Posted {job.posted_date || '—'}</>}</td>
-          <td><span className={'signal ' + signalClass(job.sponsorship_status)}>{job.sponsorship_status}</span><small className="confidence">{job.confidence}</small></td>
+        <div className="table-scroll"><table><thead><tr><th className="role-col">Role</th><th>Location · Salary</th><th>Posted / Due</th><th>Sponsorship</th><th className="evidence-col">Evidence</th><th>Progress</th><th>Links</th></tr></thead><tbody>{jobs.map(job => <>{<tr key={job.id}>
+          <td className="role"><strong>{job.title || 'Untitled listing'}</strong><span>{job.institution || 'Institution unavailable'}</span><span className="role-source"><span className={'source-badge source-' + job.source}>{job.source === 'air' ? 'AIR' : 'HigherEdJobs'}</span>{job.search_groups && <small className="source-meta">{job.search_groups}</small>}</span></td>
+          <td className="place"><span>{job.location || '—'}</span><small>{job.salary || 'Salary not listed'}</small></td>
+          <td className="date"><small>{job.source === 'air' ? 'Due' : 'Posted'}</small><span>{(job.source === 'air' ? job.application_due_date : job.posted_date) || '—'}</span></td>
+          <td><span className={'signal ' + signalClass(job.sponsorship_status)}>{job.sponsorship_status}</span><small className="confidence">{job.confidence}</small>{parseSignals(job.signals).map(signal => <span key={signal} className={'signal signal-badge ' + (signal === 'Non-college employer' ? 'signal-caution' : 'signal-positive')}>{signal}</span>)}</td>
           <td className="evidence"><button aria-controls={'description-' + job.id} aria-expanded={expanded === job.id} onClick={() => setExpanded(expanded === job.id ? null : job.id)}>{job.description_status === 'Failed' ? 'Description failed' : job.evidence || (job.description_status === 'Pending' ? 'Description pending' : 'View description')}<ChevronDown size={14} /></button></td>
           <td><select className="status-select" value={job.application_status} onChange={event => updateStatus(job.id, event.target.value)}><option>New</option><option>Opened</option><option>Applied</option><option>Skipped</option></select></td>
-          <td className="link-cell"><a onClick={() => opened(job.id)} href={job.source_url} target="_blank" rel="noreferrer">Listing <ExternalLink size={12} /></a>{job.apply_url && <a onClick={() => opened(job.id)} href={job.apply_url} target="_blank" rel="noreferrer">Apply <ExternalLink size={12} /></a>}</td>
-        </tr>}{expanded === job.id && <tr key={'detail-' + job.id} className="detail" id={'description-' + job.id}><td colSpan={9}><section className="context"><b>{job.description_status === 'Failed' ? 'Description unavailable' : 'Classification context'}</b><p>{job.description_status === 'Failed' ? 'The detail page could not be captured on the last run. This is not the same as no sponsorship mention.' : job.evidence_context || 'No sponsorship-specific wording was found in this listing.'}</p></section><details className="full-description"><summary>Full job description</summary><p>{job.normalized_description || 'The description has not been captured yet. Open the listing or run the source again to refresh it.'}</p></details></td></tr>}</>)}</tbody></table>{!loading && jobs.length === 0 && <div className="empty"><b>No jobs in this view.</b><span>Run a source or broaden the filters.</span></div>}</div>
+          <td><div className="link-cell"><a onClick={() => opened(job.id)} href={job.source_url} target="_blank" rel="noreferrer">Listing <ExternalLink size={12} /></a>{job.apply_url && <a onClick={() => opened(job.id)} href={job.apply_url} target="_blank" rel="noreferrer">Apply <ExternalLink size={12} /></a>}</div></td>
+        </tr>}{expanded === job.id && <tr key={'detail-' + job.id} className="detail" id={'description-' + job.id}><td colSpan={7}><section className="context"><b>{job.description_status === 'Failed' ? 'Description unavailable' : 'Classification context'}</b><p>{job.description_status === 'Failed' ? 'The detail page could not be captured on the last run. This is not the same as no sponsorship mention.' : job.evidence_context || 'No sponsorship-specific wording was found in this listing.'}</p></section><details className="full-description"><summary>Full job description</summary><p>{job.normalized_description || 'The description has not been captured yet. Open the listing or run the source again to refresh it.'}</p></details></td></tr>}</>)}</tbody></table>{!loading && jobs.length === 0 && <div className="empty"><b>No jobs in this view.</b><span>Run a source or broaden the filters.</span></div>}</div>
       </section>
     </main>
   </div>;
