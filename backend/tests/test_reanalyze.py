@@ -69,3 +69,22 @@ def test_double_escaped_title_is_fully_decoded(tmp_path):
     db = Database(tmp_path / "jobs.sqlite3")
     job_id, _ = db.upsert_job(JobDraft(higheredjobs_url="https://h/1", title="Earth &amp;amp; Environment"))
     assert db.connection.execute("SELECT title FROM jobs WHERE id=?", (job_id,)).fetchone()[0] == "Earth & Environment"
+
+
+def test_reanalyze_keeps_angle_bracket_text_in_compacted_rows(tmp_path):
+    # Compacted rows have no raw HTML to rebuild from, so plain text must not be reparsed as HTML.
+    db = Database(tmp_path / "jobs.sqlite3")
+    job_id, _ = db.upsert_job(JobDraft(higheredjobs_url="https://h/1", normalized_description="Send CV to <jobs@x.edu> by Friday."))
+    db.reanalyze()
+    assert db.connection.execute("SELECT normalized_description FROM jobs WHERE id=?", (job_id,)).fetchone()[0] == "Send CV to <jobs@x.edu> by Friday."
+
+
+def test_startup_relabel_failure_does_not_stop_the_server(capsys):
+    from backend.app import main
+
+    class Broken:
+        def reanalyze(self, only_outdated=False):
+            raise ValueError("bad row")
+
+    main.relabel_on_startup(Broken())
+    assert "bad row" in capsys.readouterr().err

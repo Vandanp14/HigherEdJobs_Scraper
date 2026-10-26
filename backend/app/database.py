@@ -1,5 +1,6 @@
 import html
 import json
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -334,8 +335,11 @@ class Database:
                 normalize = normalize_air_description if row["source"] == "air" else normalize_hej_description
                 text = normalize(row["raw_description"])
             else:
-                # Compacted rows lost their HTML; strip any tags left in the stored text.
-                text = normalize_hej_description(row["normalized_description"])
+                # Compacted rows lost their HTML. Strip tags only when the stored text still has markup:
+                # reparsing plain text would drop things like "<jobs@x.edu>" for good.
+                stored = row["normalized_description"]
+                has_markup = re.search(r"</?(?:p|div|li|ul|ol|br|b|strong|em|i|span|center|h\d|table|tr|td)\b[^>]*>|&lt;", stored, re.I)
+                text = normalize_hej_description(stored) if has_markup else stored
             text = text or row["normalized_description"]
             now = utcnow()
             self.connection.execute("UPDATE jobs SET normalized_description=? WHERE id=?", (text, row["id"]))

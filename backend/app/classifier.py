@@ -8,7 +8,7 @@ import html
 import re
 from dataclasses import asdict, dataclass, field
 
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 TRIGGER = re.compile(
     r"\b(?:visa(?:\s+sponsorship)?|sponsor(?:ship|ing|ed|s)?|h[-‑–]?1b|"
     r"work\s+authorization|employment\s+authorization|authorized\s+to\s+work|"
@@ -26,16 +26,23 @@ NOISE = re.compile(
     r"\b\w+-sponsored\b|"
     r"\bsponsored\s+(?:research|projects?|programs?|events?|activities|volunteer\w*|travel|trips?)\b|"
     r"\b(?:sponsors?\s+)?(?:working\s+|work\s+)?visas?\b[^.\n]{0,60}?\bin\s+" + COUNTRIES + r"\b|"
-    r"\b(?:does\s+not|doesn't|do\s+not)\s+require\s+(?:an?\s+)?(?:active\s+)?security\s+clearance\b",
+    r"\b(?:does\s+not|doesn't|do\s+not)\s+require\s+(?:an?\s+)?(?:active\s+)?security\s+clearance\b|"
+    r"\bno\s+(?:security\s+clearance|green\s+card)\s+(?:is\s+)?required\b|"
+    r"[^.\n]*\b(?:security\s+clearance|green\s+card)\b[^.\n]*\b(?:preferred|not\s+required)\b[^.\n]*|"
+    r"\b(?:do|does)\s+not\s+need\s+to\s+(?:request|provide|submit|show)\b[^.\n]*",
     re.I,
 )
 FUTURE = r"(?:now\s+or\s+in\s+the\s+future|now\s+or\s+future|current(?:ly)?\s+or\s+(?:in\s+the\s+)?future)"
 REFUSAL_WORD = r"\b(?:without|not|no|unable|cannot|can't|won't)\b"
 # A bare "sponsor" with none of these nearby is about events, research, or founders, not visas.
 VISA_CONTEXT = re.compile(r"visa|immigra|h[-‑–]?1b|employ|work\s+auth|authoriz|status|petition|green\s+card")
-HEDGE = re.compile(r"\bmay\b|\bmight\b|not\s+guaranteed")
+HEDGE = re.compile(r"\bmay\b|\bmight\b|guarantee")
+# A refusal with an exception ("…not available for part-time positions, but full-time roles are eligible").
+QUALIFIER = re.compile(r"\b(?:but|however|except)\b")
+# Only labels that ask whether sponsorship is offered; "Visa restrictions: No" means the opposite.
 FORM_FIELD = re.compile(
-    r"^[^\n]*(?:sponsor|visa)[^\n]*:[ \t]*(?:\n[ \t]*)*(yes|no)[ \t]*(?=\n|$)", re.I | re.M,
+    r"^[^\n]*(?:sponsorship\s+(?:is\s+)?(?:available|provided|offered)|visa\s+sponsorship)[^\n]*:"
+    r"[ \t]*(?:\n[ \t]*)*(yes|no)[ \t]*(?=\n|$)", re.I | re.M,
 )
 
 # Match within clauses rather than joining unrelated sentences across a posting.
@@ -44,7 +51,9 @@ NEGATIVE = [
     # unambiguous negative verb + sponsorship action instead of an institution.
     r"\b(?:cannot|can\s+not|can't|will\s+not|won't|does\s+not|do\s+not|"
     r"is\s+not\s+able\s+to|are\s+not\s+able\s+to|unable\s+to)\s+"
-    r"(?:(?:\w+[ -]){0,5})?(?:sponsor(?:ship|ing|ed)?|provide|offer|support)\b",
+    r"(?:(?!need\b|charge\b|request\b)\w+[ -]){0,5}(?:sponsor(?:ship|ing|ed)?\b|"
+    r"(?:provide|offer|support)\b.{0,30}\b(?:sponsor|visa|h[-‑–]?1b|immigration|work\s+authorization|employment\s+authorization))",
+    r"\b(?:requir\w*|need\w*)\s+(?:\w+\s+){0,3}sponsorship\b.{0,40}\bwill\s+not\s+be\s+considered\b",
     r"\b(?:visa\s+|h[-‑–]?1b\s+|immigration\s+|employer\s+)?sponsorship\s+"
     r"(?:(?:is|will|can)(?:\s+be)?\s+)?(?:(?:currently|presently|at\s+this\s+time)\s+)?"
     r"(?:not\s+(?:be\s+)?(?:available|provided|offered|possible|supported)|unavailable)\b",
@@ -60,7 +69,7 @@ NEGATIVE = [
     r"\bsponsorship\b[^.]{0,50}?\b(?:is|are|will\s+be)\s+not\s+(?:available|provided|offered|possible)\b",
     r"\b(?:obtain|maintain|hold)\b.{0,40}\bsecurity\s+clearance\b",
     r"\b(?:only\s+(?:u\.?s\.?\s+)?citizens|must\s+be\s+a\s+u\.?s\.?\s+citizen|"
-    r"(?:u\.?s\.?\s+)?citizenship\s+(?:is\s+)?required|permanent\s+residents?\s+only|green\s+card\s+required)\b",
+    r"(?:u\.?s\.?\s+)?citizenship\s+(?:is\s+)?required|permanent\s+residents?\s+only(?=\s*(?:[.,;)]|$))|green\s+card\s+required)",
     r"\b(?:(?:must|required\s+to)\s+(?:have|hold|obtain)\b.{0,40}security\s+clearance|"
     r"security\s+clearance\s+(?:is\s+)?required)\b",
 ]
@@ -106,7 +115,9 @@ def sentences(paragraph: str):
 def signals(description: str, institution: str | None) -> list[str]:
     found = []
     if re.search(r"\be-?verify\b", description, re.I):
-        found.append("E-Verify")
+        # STEM OPT needs an E-Verify employer, so a stated non-participant is a warning, not a plus.
+        refuses = re.search(r"\b(?:not|no|n't|never)\b[^.\n]{0,40}\be-?verify\b", description, re.I)
+        found.append("No E-Verify" if refuses else "E-Verify")
     if re.search(r"\bcap[\s-]exempt\b", description, re.I):
         found.append("Cap-exempt")
     if institution and not COLLEGE_WORDS.search(html.unescape(institution)):
@@ -121,16 +132,20 @@ def rate(sentence: str) -> tuple[float, str, str] | None:
     if not found:
         return None
     hedged = bool(HEDGE.search(lowered))
-    future_refusal = re.search(REFUSAL_WORD, lowered) and (
-        re.search(r"\bsponsor\w*\b.{0,60}\b" + FUTURE, lowered) or re.search(FUTURE + r".{0,60}\bsponsor\w*\b", lowered)
+    # "sponsor" as a verb with no visa wording nearby is about events, research or founders.
+    if all(re.fullmatch(r"sponsor(?:s|ed|ing)?", term) for term in found) and not VISA_CONTEXT.search(lowered):
+        return None
+    # The refusal word must lead into the sponsorship span, not sit elsewhere ("…with no cost").
+    future_refusal = re.search(REFUSAL_WORD + r"[^.]{0,80}?\bsponsor\w*\b[^.]{0,60}?" + FUTURE, lowered) or re.search(
+        REFUSAL_WORD + r"[^.]{0,80}?" + FUTURE + r"[^.]{0,60}?\bsponsor\w*\b", lowered
     )
     if future_refusal or any(re.search(p, lowered) for p in NEGATIVE):
-        # A hedge keeps a job visible: false "Not Worth It" is the costliest mistake.
-        return (2, "Likely No Sponsorship", "Medium") if hedged else (4, "Not Worth It", "High")
+        # A hedge or an exception keeps a job visible: false "Not Worth It" is the costliest mistake.
+        if hedged or QUALIFIER.search(lowered):
+            return 2, "Likely No Sponsorship", "Medium"
+        return 4, "Not Worth It", "High"
     if any(re.search(p, lowered) for p in POSITIVE) and not re.search(r":\s*no\b", lowered):
         return 3, "Sponsorship Possible", "Medium" if hedged or "considered" in lowered else "High"
-    if all(re.fullmatch(r"sponsor\w*", term) for term in found) and not VISA_CONTEXT.search(lowered):
-        return None
     if hedged and re.search(r"\bnot\b|\bno\b", lowered) and re.search(r"sponsor|visa|h[-‑–]?1b", lowered):
         return 2, "Likely No Sponsorship", "Medium"
     if any(re.search(p, lowered) for p in LIKELY):

@@ -15,8 +15,8 @@ def check(description, status):
     return result
 
 
-def test_version_is_two():
-    assert VERSION == "2.0.0"
+def test_version_is_two_point_zero_one():
+    assert VERSION == "2.0.1"
 
 
 def test_form_field_no_on_same_line():
