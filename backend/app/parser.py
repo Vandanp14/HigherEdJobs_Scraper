@@ -1,5 +1,6 @@
 """HTML parsing isolated from browser navigation for fixture-based regression tests."""
 
+import html
 import json
 import re
 from dataclasses import dataclass
@@ -259,6 +260,31 @@ def labeled_value(soup, label: str) -> str | None:
     return None
 
 
+def _lines(text: str) -> str:
+    return "\n".join(" ".join(line.split()) for line in text.splitlines() if line.strip())
+
+
+def normalize_hej_description(raw: str) -> str:
+    """Plain text with one line per block. HigherEdJobs JSON-LD often escapes the HTML twice
+    (`&lt;p&gt;`), which one parse leaves as literal tags, so unescape once more first."""
+    if "&lt;" in raw:
+        raw = html.unescape(raw)
+    soup = BeautifulSoup(raw, "html.parser")
+    for unwanted in soup.select("script, style, noscript"):
+        unwanted.decompose()
+    # Keep paragraphs intact for evidence, even when the sentence contains inline tags.
+    for node in soup.select("p, div, li, br, h1, h2, h3, h4, center, tr"):
+        node.insert_after("\n")
+    return _lines(soup.get_text())
+
+
+def normalize_air_description(raw: str) -> str:
+    soup = BeautifulSoup(raw, "html.parser")
+    for unwanted in soup.select("script, style, noscript"):
+        unwanted.decompose()
+    return _lines(soup.get_text("\n"))
+
+
 def parse_job(html: str, url: str, now: datetime) -> JobDraft:
     soup = checked_soup(html)
     data = next(job_postings(soup), {})
@@ -268,13 +294,7 @@ def parse_job(html: str, url: str, now: datetime) -> JobDraft:
         raw = str(node) if node else None
     if not raw or not BeautifulSoup(raw, "html.parser").get_text(strip=True):
         raise ParseError("Job description not found. Listing metadata was retained; verify the description selector with codegen.")
-    description_soup = BeautifulSoup(raw, "html.parser")
-    for unwanted in description_soup.select("script, style, noscript"):
-        unwanted.decompose()
-    # Keep paragraphs intact for evidence, even when the sentence contains inline tags.
-    for node in description_soup.select("p, div, li, br, h1, h2, h3, h4"):
-        node.insert_after("\n")
-    normalized = "\n".join(" ".join(line.split()) for line in description_soup.get_text().splitlines() if line.strip())
+    normalized = normalize_hej_description(raw)
     organization = data.get("hiringOrganization") or {}
     institution = organization.get("name") if isinstance(organization, dict) else None
     institution = institution or text_at(soup, '.institution, .job-institution, [itemprop="hiringOrganization"]')
@@ -380,10 +400,7 @@ def parse_air_job(html: str, url: str, now: datetime) -> JobDraft:
     if not content_sections:
         raise ParseError("AIR job description was not found.")
     raw = "\n".join(str(section.select_one(".clearfix")) for section in content_sections)
-    description_soup = BeautifulSoup(raw, "html.parser")
-    for unwanted in description_soup.select("script, style, noscript"):
-        unwanted.decompose()
-    normalized = "\n".join(" ".join(line.split()) for line in description_soup.get_text("\n").splitlines() if line.strip())
+    normalized = normalize_air_description(raw)
     if not normalized:
         raise ParseError("AIR job description was empty.")
     title = text_at(detail, "h1.title, h1")
