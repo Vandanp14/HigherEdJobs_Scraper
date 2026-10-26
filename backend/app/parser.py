@@ -121,7 +121,9 @@ def normalize_date(value: str | None, now: datetime) -> str | None:
 def checked_soup(html: str, portal: str = "HigherEdJobs") -> BeautifulSoup:
     soup = BeautifulSoup(html, "html.parser")
     text = soup.get_text(" ", strip=True).lower()
-    if soup.select_one('iframe[src*="_Incapsula_Resource"], iframe[src*="captcha"]') or any(
+    # Only Incapsula's own challenge counts. Normal job pages embed a Google reCAPTCHA widget
+    # after load, so a generic captcha iframe is not evidence of a block.
+    if soup.select_one('iframe[src*="_Incapsula_Resource"]') or any(
         phrase in text for phrase in ("request unsuccessful. incapsula", "verify you are human", "access denied", "pardon our interruption")
     ):
         if portal == "HigherEdJobs":
@@ -229,10 +231,15 @@ def job_postings(soup):
             if "@graph" in value:
                 yield from walk(value["@graph"])
     for script in soup.select('script[type="application/ld+json"]'):
+        text = script.string or script.get_text()
         try:
-            yield from walk(json.loads(script.string or script.get_text()))
+            yield from walk(json.loads(text))
         except (ValueError, TypeError):
-            continue
+            # Some HigherEdJobs pages leave a trailing comma before a closing brace.
+            try:
+                yield from walk(json.loads(re.sub(r",(\s*[}\]])", r"\1", text)))
+            except (ValueError, TypeError):
+                continue
 
 
 def labeled_value(soup, label: str) -> str | None:
@@ -257,7 +264,7 @@ def parse_job(html: str, url: str, now: datetime) -> JobDraft:
     data = next(job_postings(soup), {})
     raw = data.get("description")
     if not raw:
-        node = soup.select_one('#jobDescription, #job-description, .job-description, [itemprop="description"]')
+        node = soup.select_one('#jobDesc, #jobDescription, #job-description, .job-description, [itemprop="description"]')
         raw = str(node) if node else None
     if not raw or not BeautifulSoup(raw, "html.parser").get_text(strip=True):
         raise ParseError("Job description not found. Listing metadata was retained; verify the description selector with codegen.")
