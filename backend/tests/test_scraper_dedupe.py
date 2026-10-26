@@ -120,7 +120,7 @@ def test_progress_messages_show_group_and_job_outcomes(tmp_path, monkeypatch, ca
     assert "[HigherEdJobs] Data & Analytics: searching" in out
     assert "[HigherEdJobs] Data & Analytics page 1: 1 listings" in out
     assert "✓ Data Analyst — State U" in out
-    assert "↺ Data Analyst — already fetched; added to Software Development" in out
+    assert "↺ Data Analyst — already saved; added to Software Development" in out
 
 
 class FakeBrowser:
@@ -193,3 +193,42 @@ def test_air_runs_headless_so_it_opens_no_window(tmp_path, monkeypatch):
     monkeypatch.setattr(scraper, "parse_air_results", lambda html, url, now: [])
     asyncio.run(scraper.AIRScraper(Database(tmp_path / "jobs.sqlite3"), replace(Settings(), headless=False)).run())
     assert launches[0]["headless"] is True
+
+
+def test_rerun_skips_job_pages_already_saved(tmp_path, monkeypatch):
+    database = Database(tmp_path / "jobs.sqlite3")
+    saved, _ = database.upsert_job(JobDraft(higheredjobs_url=LISTING, normalized_description="Text"), "data")
+    monkeypatch.setattr(FakeContext, "close", lambda self: _value(None), raising=False)
+    context = FakeContext()
+    monkeypatch.setattr(scraper, "async_playwright", lambda: FakePlaywright(context))
+    monkeypatch.setattr(scraper, "parse_results", lambda html, url, now: [JobDraft(higheredjobs_url=LISTING)])
+    database.set_group_enabled("data", True)
+    for group in database.groups():
+        if group["id"] not in ("data", "web"): database.set_group_enabled(group["id"], False)
+    asyncio.run(scraper.HigherEdJobsScraper(database, replace(Settings(), request_delay=0, headless=True)).run())
+    groups = [row[0] for row in database.connection.execute("SELECT search_group_id FROM job_search_matches WHERE job_id=? ORDER BY 1", (saved,))]
+    assert context.detail_loads == 0
+    assert groups == ["data", "web"]
+
+
+def test_air_rerun_skips_listings_already_saved(tmp_path, monkeypatch, capsys):
+    database = Database(tmp_path / "jobs.sqlite3")
+    url = "https://www.airweb.org/community/Career-Center/1"
+    database.upsert_job(JobDraft(source="air", source_url=url, normalized_description="Text"))
+    database.update_job(1, {"application_status": "Applied"})
+    monkeypatch.setattr(FakeContext, "close", lambda self: _value(None), raising=False)
+    loads = []
+    original_goto = FakePage.goto
+
+    async def goto(self, target, wait_until=None):
+        loads.append(target)
+        await original_goto(self, target, wait_until)
+
+    monkeypatch.setattr(FakePage, "goto", goto)
+    monkeypatch.setattr(scraper, "async_playwright", lambda: FakePlaywright(FakeContext()))
+    monkeypatch.setattr(scraper, "parse_air_results", lambda html, url_, now: [JobDraft(source="air", source_url=url, title="Analyst")])
+    asyncio.run(scraper.AIRScraper(database, replace(Settings(), request_delay=0, headless=True)).run())
+    status = database.connection.execute("SELECT description_status, application_status FROM jobs").fetchone()
+    assert url not in loads
+    assert tuple(status) == ("Complete", "Applied")
+    assert "(1/1) ↺ Analyst — already saved" in capsys.readouterr().out

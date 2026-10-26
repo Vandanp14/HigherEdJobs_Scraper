@@ -227,6 +227,14 @@ class Database:
             (job_id, group_id, now, now),
         )
 
+    def saved_jobs(self, source: str) -> dict[str, int]:
+        """Source URL -> job id for jobs whose description was captured, so reruns can skip them."""
+        rows = self.connection.execute(
+            "SELECT source_url, id FROM jobs WHERE source=? AND description_status='Complete' AND source_url IS NOT NULL",
+            (source,),
+        )
+        return {row["source_url"]: row["id"] for row in rows}
+
     def add_match(self, job_id: int, group_id: str):
         self._record_match(job_id, group_id, utcnow())
         self.connection.commit()

@@ -33,3 +33,11 @@ def test_it_group_disable_runs_once(tmp_path):
     assert {group["id"]: group["enabled"] for group in db.groups()}["it"] is False
     db.set_group_enabled("it", True)
     assert {group["id"]: group["enabled"] for group in Database(path).groups()}["it"] is True
+
+
+def test_saved_jobs_lists_only_complete_jobs_for_source(tmp_path):
+    db = Database(tmp_path / "jobs.sqlite3")
+    done, _ = db.upsert_job(JobDraft(higheredjobs_url="https://x/1", normalized_description="Text"), "data")
+    db.upsert_job(JobDraft(higheredjobs_url="https://x/2", description_status="Failed"), "data")
+    db.upsert_job(JobDraft(source="air", source_url="https://air/3", normalized_description="Text"))
+    assert db.saved_jobs("higheredjobs") == {"https://x/1": done}

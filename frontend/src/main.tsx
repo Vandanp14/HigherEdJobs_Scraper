@@ -97,7 +97,7 @@ function App() {
     return () => window.clearInterval(timer);
   }, [activeRun, runStartedAt]);
 
-  // Runs started outside this tab (daily.sh) save jobs as they go; poll so they appear here.
+  // Runs started outside this tab (run.sh) save jobs as they go; poll so they appear here.
   useEffect(() => {
     if (activeRun) return undefined;
     const poll = async () => {
@@ -106,13 +106,13 @@ function App() {
         setSources(sourceList);
         const running = sourceList.some(source => source.last_run && !source.last_run.completed_at);
         if (running || externalRun) await load();
-        if (running && !externalRun) setNotice('A run started by daily.sh is in progress — new jobs appear automatically.');
+        if (running && !externalRun) setNotice('A run started from the terminal is in progress — new jobs appear automatically.');
         if (!running && externalRun) {
           const errors = sourceList.flatMap(source => source.last_run?.errors ?? []);
           const blocked = errors.some(error => error.error.includes('access check blocked'));
           setNotice(blocked
-            ? 'Daily run finished, but HigherEdJobs verification was not completed. Run HigherEdJobs again and solve the verification in the browser window it opens.'
-            : `Daily run finished.${errors.length ? ` ${errors.length} error(s) recorded.` : ''}`);
+            ? 'Run finished, but HigherEdJobs verification was not completed. Run HigherEdJobs again and solve the verification in the browser window it opens.'
+            : `Run finished.${errors.length ? ` ${errors.length} error(s) recorded.` : ''}`);
         }
         setExternalRun(running);
       } catch {

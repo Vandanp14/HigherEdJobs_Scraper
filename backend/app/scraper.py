@@ -42,8 +42,10 @@ class HigherEdJobsScraper:
             async with async_playwright() as playwright:
                 browser = await playwright.chromium.launch(headless=self.settings.headless, channel=self.settings.browser_channel)
                 context = await browser.new_context(storage_state=self.settings.storage_state) if self.settings.storage_state else await browser.new_context()
-                # Listing URL -> job id for this run, so a job matched by several groups is opened once.
-                fetched: dict[str, int] = {}
+                # Listing URL -> job id. Seeded with jobs saved by earlier runs and extended as this run
+                # saves more, so each job page is opened at most once and same-day reruns stay quick.
+                fetched: dict[str, int] = self.database.saved_jobs("higheredjobs")
+                if fetched: report(HEJ, f"{len(fetched)} jobs already saved; only new listings will be opened")
                 try:
                     for index, group in enumerate(groups, 1):
                         report(HEJ, f"Group {index}/{len(groups)}: {group['name']}")
@@ -78,7 +80,7 @@ class HigherEdJobsScraper:
                 label = listing.title or key
                 if key in fetched:
                     self.database.add_match(fetched[key], group["id"])
-                    report(HEJ, f"  ↺ {label} — already fetched; added to {name}"); continue
+                    report(HEJ, f"  ↺ {label} — already saved; added to {name}"); continue
                 try:
                     await detail.goto(key, wait_until="domcontentloaded"); await self._ensure_access(detail)
                     full=parse_job(await detail.content(), detail.url, now)
@@ -163,11 +165,15 @@ class AIRScraper:
                             await page.content(), page.url, datetime.now(timezone.utc)
                         )
                         discovered = len(listings)
+                        saved = self.database.saved_jobs("air")
                         report("AIR", f"Found {discovered} listings")
                         detail = await context.new_page()
                         detail.set_default_timeout(self.settings.timeout_ms)
                         for index, listing in enumerate(listings, 1):
                             label = f"({index}/{discovered})"
+                            if listing.source_url in saved:
+                                report("AIR", f"  {label} ↺ {listing.title or listing.source_url} — already saved")
+                                continue
                             try:
                                 await detail.goto(
                                     listing.source_url, wait_until="domcontentloaded"

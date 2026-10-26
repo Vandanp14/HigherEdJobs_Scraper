@@ -4,22 +4,22 @@ Local job discovery and sponsorship-language review based on `HigherEdJobs_PRD.m
 
 ## Daily use
 
-```bash
-./daily.sh
-```
+| Command | What it does |
+|---|---|
+| `./daily.sh` | Morning: wipe saved jobs, then run a fresh scrape (`clear.sh` + `run.sh`). |
+| `./run.sh` | Open the dashboard and scrape **without wiping**. Jobs already saved with a description are skipped, so a later run the same day only opens new listings. Statuses and notes are kept; jobs that failed before are retried. |
+| `./clear.sh` | Wipe saved jobs only. Refuses while the server is running. |
 
-One command does the whole daily routine:
+`./clear.sh` (and so `./daily.sh`) **wipes all saved jobs**, including application statuses (Opened, Applied, Skipped) and notes. The saved browser session in `data/browser-state.json` is kept.
 
-1. **Wipes all saved jobs**, including application statuses (Opened, Applied, Skipped) and notes. The saved browser session in `data/browser-state.json` is kept.
-2. Rebuilds the dashboard if its source changed, then serves the API and dashboard at `http://127.0.0.1:8000`.
-3. Opens the dashboard and starts the HigherEdJobs and AIR runs. Jobs appear as they are fetched.
+`./run.sh` rebuilds the dashboard if its source changed, serves the API and dashboard at `http://127.0.0.1:8000`, opens it, and starts the HigherEdJobs and AIR runs. Saved jobs show immediately; new ones appear as they are fetched.
 
 If HigherEdJobs asks for human verification, you hear a sound and the terminal prints a message. Solve the check in the browser window the run opened. The run waits up to 5 minutes (`HEJ_VERIFICATION_TIMEOUT`, in seconds), saves the session, and continues. `scripts/codegen.sh` is no longer needed for daily runs.
 
-Each job page is opened once per run, even when several search groups match it. The "University IT Titles" group repeats the Software and Systems queries, so it is off by default; re-enable it under **Search sources** if wanted.
+Each job page is opened at most once: not again when another search group matches it, and not on later runs once it is saved. The "University IT Titles" group repeats the Software and Systems queries, so it is off by default; re-enable it under **Search sources** if wanted.
 
 The terminal prints timestamped progress: each search group and results page, every job as
-`✓` saved, `✗` failed (with the reason), or `↺` already fetched by an earlier group, and totals
+`✓` saved, `✗` failed (with the reason), or `↺` already saved, and totals
 when each source finishes.
 
 Only one browser window opens, for HigherEdJobs, and it reuses two tabs for the whole run so it
