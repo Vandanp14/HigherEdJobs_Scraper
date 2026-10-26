@@ -11,6 +11,8 @@ from .database import Database
 from .scraper import AIRScraper, HigherEdJobsScraper
 
 settings=Settings(); database=Database(settings.database); app=FastAPI(title="HigherEdJobs Review")
+# Runs execute inside this process, so any run still open at startup was cut off by a stop.
+database.close_interrupted_runs()
 # Sources with a run in progress; a second run would double the request rate to the same site.
 RUNNING: set[str]=set()
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_methods=["*"], allow_headers=["*"])

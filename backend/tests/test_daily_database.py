@@ -41,3 +41,14 @@ def test_saved_jobs_lists_only_complete_jobs_for_source(tmp_path):
     db.upsert_job(JobDraft(higheredjobs_url="https://x/2", description_status="Failed"), "data")
     db.upsert_job(JobDraft(source="air", source_url="https://air/3", normalized_description="Text"))
     assert db.saved_jobs("higheredjobs") == {"https://x/1": done}
+
+
+def test_close_interrupted_runs_marks_unfinished_runs(tmp_path):
+    # A run cut off by Ctrl+C never reaches finish_run; left open, the dashboard shows it as running forever.
+    db = Database(tmp_path / "jobs.sqlite3")
+    run_id = db.start_run(["data"])
+    db.close_interrupted_runs()
+    run = db.latest_run("higheredjobs")
+    assert run["id"] == run_id
+    assert run["completed_at"] is not None
+    assert run["errors"] == [{"error": "Run was interrupted before it finished."}]

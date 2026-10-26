@@ -122,6 +122,14 @@ class Database:
         self.connection.execute("UPDATE scrape_runs SET completed_at=?, jobs_discovered=?, new_jobs=?, updated_jobs=?, errors=? WHERE id=?", (utcnow(), discovered, new, updated, json.dumps(errors), run_id))
         self.connection.commit()
 
+    def close_interrupted_runs(self):
+        """Mark runs left open by a stopped server as finished, so they no longer look in progress."""
+        self.connection.execute(
+            "UPDATE scrape_runs SET completed_at=?, errors=? WHERE completed_at IS NULL",
+            (utcnow(), json.dumps([{"error": "Run was interrupted before it finished."}])),
+        )
+        self.connection.commit()
+
     def latest_run(self, source: str | None = None):
         if source:
             row = self.connection.execute(
