@@ -76,3 +76,14 @@ def test_second_run_for_same_source_is_rejected(tmp_path):
         assert response.status_code == 409
     finally:
         main.RUNNING.discard("higheredjobs")
+
+
+def test_every_endpoint_runs_on_the_event_loop():
+    # The app shares one sqlite3 connection. Sync endpoints run in a threadpool and used it
+    # concurrently with the scraper ("bad parameter or other API misuse"); async endpoints
+    # all run on the single event-loop thread, so database access never overlaps.
+    import inspect
+    from fastapi.routing import APIRoute
+
+    sync = [route.path for route in main.app.routes if isinstance(route, APIRoute) and not inspect.iscoroutinefunction(route.endpoint)]
+    assert sync == []
