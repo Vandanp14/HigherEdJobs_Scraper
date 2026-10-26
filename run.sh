@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Serve the dashboard and fetch HigherEdJobs and AIR listings, keeping saved jobs.
 # Job pages already saved are skipped, so a second run the same day only opens new listings.
+# --no-scrape only serves the saved jobs (see ./view.sh).
 set -euo pipefail
 cd "$(dirname "$0")"
 
 URL="http://127.0.0.1:8000"
+SCRAPE=true
+if [ "${1:-}" = "--no-scrape" ]; then SCRAPE=false; fi
 say() { echo "$(date +%H:%M:%S) [run] $*"; }
 
 if lsof -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
@@ -46,6 +49,11 @@ fi
 
 say "Server ready. Opening dashboard: $URL"
 open "$URL"
+if [ "$SCRAPE" = false ]; then
+  say "Showing saved jobs only; no scraping. Ctrl+C to stop."
+  wait $SERVER
+  exit
+fi
 say "Starting AIR Career Center and HigherEdJobs runs side by side. Progress lines follow."
 say "If HigherEdJobs asks for verification you'll hear a sound; solve it in the browser window it opened."
 (

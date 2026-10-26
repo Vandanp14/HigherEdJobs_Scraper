@@ -8,6 +8,7 @@ Local job discovery and sponsorship-language review based on `HigherEdJobs_PRD.m
 |---|---|
 | `./daily.sh` | Morning: wipe saved jobs, then run a fresh scrape (`clear.sh` + `run.sh`). |
 | `./run.sh` | Open the dashboard and scrape **without wiping**. Jobs already saved with a description are skipped, so a later run the same day only opens new listings. Statuses and notes are kept; jobs that failed before are retried. |
+| `./view.sh` | Open the dashboard with the jobs already saved. Nothing is scraped or wiped. |
 | `./clear.sh` | Wipe saved jobs only. Refuses while the server is running. |
 
 `./clear.sh` (and so `./daily.sh`) **wipes all saved jobs**, including application statuses (Opened, Applied, Skipped) and notes. The saved browser session in `data/browser-state.json` is kept.
