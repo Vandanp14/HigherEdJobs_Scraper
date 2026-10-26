@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import datetime, timezone
 
 from playwright.async_api import BrowserContext, async_playwright
@@ -17,6 +18,9 @@ from .parser import (
     parse_job,
     parse_results,
 )
+from .progress import elapsed, report
+
+HEJ = "HigherEdJobs"
 
 
 class HigherEdJobsScraper:
@@ -29,6 +33,8 @@ class HigherEdJobsScraper:
     async def run(self, group_ids: list[str] | None = None):
         groups = [group for group in self.database.groups() if group["enabled"] and (not group_ids or group["id"] in group_ids)]
         run_id = self.database.start_run([group["id"] for group in groups], source="higheredjobs"); errors=[]; discovered=new=updated=0
+        started = time.monotonic()
+        report(HEJ, f"Starting {len(groups)} search groups: " + ", ".join(group["name"] for group in groups))
         try:
             async with async_playwright() as playwright:
                 browser = await playwright.chromium.launch(headless=self.settings.headless, channel=self.settings.browser_channel)
@@ -36,33 +42,41 @@ class HigherEdJobsScraper:
                 # Listing URL -> job id for this run, so a job matched by several groups is opened once.
                 fetched: dict[str, int] = {}
                 try:
-                    for group in groups:
+                    for index, group in enumerate(groups, 1):
+                        report(HEJ, f"Group {index}/{len(groups)}: {group['name']}")
                         try:
-                            counts = await self._run_group(context, group, fetched); discovered += counts[0]; new += counts[1]; updated += counts[2]
+                            counts = await self._run_group(context, group, fetched, errors); discovered += counts[0]; new += counts[1]; updated += counts[2]
                         except Exception as error:
                             errors.append({"group":group["name"],"error":str(error)})
+                            report(HEJ, f"{group['name']} stopped: {error}")
                 finally:
                     await context.close(); await browser.close()
         finally:
             self.database.finish_run(run_id, discovered, new, updated, errors)
+            report(HEJ, f"Finished in {elapsed(time.monotonic() - started)}: {discovered} listings, {new} new, {len(errors)} errors")
         return self.database.latest_run()
 
-    async def _run_group(self, context: BrowserContext, group: dict, fetched: dict[str, int]):
+    async def _run_group(self, context: BrowserContext, group: dict, fetched: dict[str, int], errors: list[dict]):
+        name = group["name"]
+        report(HEJ, f"{name}: searching")
         page = await context.new_page(); page.set_default_timeout(self.settings.timeout_ms)
         try:
             await page.goto(ADVANCED, wait_until="domcontentloaded"); await self._ensure_access(page)
             keyword = page.get_by_role("textbox", name="Keyword Use quotes to search")
             await keyword.fill(group["query"]); await page.get_by_role("button", name="Search Jobs").click()
             await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page)
-            seen=set(); discovered=new=updated=0
+            seen=set(); discovered=new=updated=failed=0; page_number=1
             while True:
                 html=await page.content(); now=datetime.now(timezone.utc); listings=parse_results(html, page.url, now)
+                report(HEJ, f"{name} page {page_number}: {len(listings)} listings")
                 for listing in listings:
                     key=listing.higheredjobs_url
                     if key in seen: continue
                     seen.add(key); discovered += 1
+                    label = listing.title or key
                     if key in fetched:
-                        self.database.add_match(fetched[key], group["id"]); continue
+                        self.database.add_match(fetched[key], group["id"])
+                        report(HEJ, f"  ↺ {label} — already fetched; added to {name}"); continue
                     detail=await context.new_page()
                     try:
                         await detail.goto(key, wait_until="domcontentloaded"); await self._ensure_access(detail)
@@ -70,14 +84,20 @@ class HigherEdJobsScraper:
                         for field in ("title","institution","location","city","state","salary","posted_date"):
                             setattr(full, field, getattr(full, field) or getattr(listing, field))
                         fetched[key], is_new = self.database.upsert_job(full,group["id"]); new += int(is_new); updated += int(not is_new)
-                    except (ParseError, AccessBlocked) as error:
+                        report(HEJ, f"  ✓ {full.title or label} — {full.institution or 'unknown institution'}")
+                    except Exception as error:
+                        # One bad page (timeout, block, unparseable) must not end the group.
                         listing.description_status = "Failed"
-                        fetched[key], _ = self.database.upsert_job(listing,group["id"]); updated += 1
+                        fetched[key], _ = self.database.upsert_job(listing,group["id"]); updated += 1; failed += 1
+                        errors.append({"group":name,"listing_url":key,"error":str(error)})
+                        report(HEJ, f"  ✗ {label} — {str(error).splitlines()[0] if str(error) else type(error).__name__}")
                     finally: await detail.close(); await asyncio.sleep(self.settings.request_delay)
                 next_link=page.get_by_role("link", name="Next page")
                 if await next_link.count() and await next_link.is_visible():
                     await next_link.click(); await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page); await asyncio.sleep(self.settings.request_delay)
+                    page_number += 1
                 else: break
+            report(HEJ, f"{name} done: {discovered} listings, {new} new, {failed} failed")
             return discovered,new,updated
         finally: await page.close()
 
@@ -92,11 +112,16 @@ class HigherEdJobsScraper:
                 page,
                 timeout_s=self.settings.verification_timeout_s,
                 alert=alert_user,
-                save_state=lambda: page.context.storage_state(path=state_path),
+                save_state=lambda: self._save_session(page, state_path),
             )
         except AccessBlocked:
             self.verification_abandoned = True
+            report(HEJ, "Verification not completed in time; skipping HigherEdJobs pages for the rest of this run.")
             raise
+
+    async def _save_session(self, page, state_path: str):
+        await page.context.storage_state(path=state_path)
+        report(HEJ, "Verification passed; session saved. Continuing.")
 
 
 class AIRScraper:
@@ -107,6 +132,8 @@ class AIRScraper:
         run_id = self.database.start_run([], source="air")
         errors = []
         discovered = new = updated = 0
+        started = time.monotonic()
+        report("AIR", "Loading AIR Career Center board")
         try:
             async with async_playwright() as playwright:
                 browser = await playwright.chromium.launch(
@@ -128,7 +155,9 @@ class AIRScraper:
                             await page.content(), page.url, datetime.now(timezone.utc)
                         )
                         discovered = len(listings)
-                        for listing in listings:
+                        report("AIR", f"Found {discovered} listings")
+                        for index, listing in enumerate(listings, 1):
+                            label = f"({index}/{discovered})"
                             detail = await context.new_page()
                             try:
                                 await detail.goto(
@@ -157,6 +186,7 @@ class AIRScraper:
                                 is_new = self.database.upsert(full)
                                 new += int(is_new)
                                 updated += int(not is_new)
+                                report("AIR", f"  {label} ✓ {full.title or listing.source_url} — {full.institution or 'unknown institution'}")
                             except (ParseError, AccessBlocked) as error:
                                 listing.description_status = "Failed"
                                 self.database.upsert(listing)
@@ -168,6 +198,7 @@ class AIRScraper:
                                         "error": str(error),
                                     }
                                 )
+                                report("AIR", f"  {label} ✗ {listing.title or listing.source_url} — {error}")
                             except Exception as error:
                                 listing.description_status = "Failed"
                                 self.database.upsert(listing)
@@ -179,6 +210,7 @@ class AIRScraper:
                                         "error": str(error),
                                     }
                                 )
+                                report("AIR", f"  {label} ✗ {listing.title or listing.source_url} — {error}")
                             finally:
                                 await detail.close()
                                 await asyncio.sleep(self.settings.request_delay)
@@ -189,8 +221,10 @@ class AIRScraper:
                     await browser.close()
         except Exception as error:
             errors.append({"source": "air", "error": str(error)})
+            report("AIR", f"Stopped: {error}")
         finally:
             self.database.finish_run(run_id, discovered, new, updated, errors)
+            report("AIR", f"Finished in {elapsed(time.monotonic() - started)}: {discovered} listings, {new} new, {len(errors)} errors")
         return self.database.latest_run()
 
     async def _ensure_access(self, page):

@@ -42,8 +42,8 @@ def test_listing_in_two_groups_is_fetched_once_and_matched_twice(tmp_path, monke
     context, fetched = FakeContext(), {}
 
     async def run_both():
-        first = await job_scraper._run_group(context, {"id": "data", "query": "q"}, fetched)
-        second = await job_scraper._run_group(context, {"id": "software", "query": "q"}, fetched)
+        first = await job_scraper._run_group(context, {"id": "data", "name": "Data", "query": "q"}, fetched, [])
+        second = await job_scraper._run_group(context, {"id": "software", "name": "Software", "query": "q"}, fetched, [])
         return first, second
 
     first, second = asyncio.run(run_both())
@@ -74,3 +74,80 @@ def test_verification_timeout_fails_fast_for_rest_of_run(tmp_path, monkeypatch):
 
     asyncio.run(ensure_twice())
     assert len(waits) == 1
+
+
+SLOW = "https://www.higheredjobs.com/details.cfm?JobCode=2"
+
+
+def test_detail_page_timeout_is_recorded_and_group_continues(tmp_path, monkeypatch):
+    from playwright.async_api import TimeoutError as PlaywrightTimeout
+
+    monkeypatch.setattr(scraper, "parse_results", lambda html, url, now: [JobDraft(higheredjobs_url=SLOW, title="Slow job"), JobDraft(higheredjobs_url=LISTING)])
+    monkeypatch.setattr(scraper, "parse_job", lambda html, url, now: JobDraft(higheredjobs_url=url, normalized_description="Text"))
+    original_goto = FakePage.goto
+
+    async def goto(self, url, wait_until=None):
+        if url == SLOW:
+            raise PlaywrightTimeout("Timeout 30000ms exceeded.")
+        await original_goto(self, url, wait_until)
+
+    monkeypatch.setattr(FakePage, "goto", goto)
+    database = Database(tmp_path / "jobs.sqlite3")
+    job_scraper = scraper.HigherEdJobsScraper(database, replace(Settings(), request_delay=0, headless=True))
+    errors = []
+    counts = asyncio.run(job_scraper._run_group(FakeContext(), {"id": "data", "name": "Data", "query": "q"}, {}, errors))
+    statuses = dict(database.connection.execute("SELECT higheredjobs_url, description_status FROM jobs").fetchall())
+    assert counts == (2, 1, 1)
+    assert statuses == {SLOW: "Failed", LISTING: "Complete"}
+    assert errors == [{"group": "Data", "listing_url": SLOW, "error": "Timeout 30000ms exceeded."}]
+
+
+def test_progress_messages_show_group_and_job_outcomes(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(scraper, "parse_results", lambda html, url, now: [JobDraft(higheredjobs_url=LISTING, title="Data Analyst", institution="State U")])
+    monkeypatch.setattr(scraper, "parse_job", lambda html, url, now: JobDraft(higheredjobs_url=url, normalized_description="Text"))
+    database = Database(tmp_path / "jobs.sqlite3")
+    job_scraper = scraper.HigherEdJobsScraper(database, replace(Settings(), request_delay=0, headless=True))
+    fetched = {}
+
+    async def run_both():
+        await job_scraper._run_group(FakeContext(), {"id": "data", "name": "Data & Analytics", "query": "q"}, fetched, [])
+        await job_scraper._run_group(FakeContext(), {"id": "software", "name": "Software Development", "query": "q"}, fetched, [])
+
+    asyncio.run(run_both())
+    out = capsys.readouterr().out
+    assert "[HigherEdJobs] Data & Analytics: searching" in out
+    assert "[HigherEdJobs] Data & Analytics page 1: 1 listings" in out
+    assert "✓ Data Analyst — State U" in out
+    assert "↺ Data Analyst — already fetched; added to Software Development" in out
+
+
+class FakeBrowser:
+    def __init__(self, context): self.context = context
+    async def new_context(self, **options): return self.context
+    async def close(self): pass
+
+
+class FakePlaywright:
+    def __init__(self, context):
+        browser = FakeBrowser(context)
+        self.chromium = type("Chromium", (), {"launch": staticmethod(lambda **options: _value(browser))})()
+    async def __aenter__(self): return self
+    async def __aexit__(self, *exc): return False
+
+
+async def _value(value): return value
+
+
+def test_air_progress_messages_count_listings(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(FakeContext, "close", lambda self: _value(None), raising=False)
+    listings = [JobDraft(source="air", source_url=f"https://www.airweb.org/community/Career-Center/{n}", title=f"Analyst {n}", institution="AIR U") for n in (1, 2)]
+    monkeypatch.setattr(scraper, "async_playwright", lambda: FakePlaywright(FakeContext()))
+    monkeypatch.setattr(scraper, "parse_air_results", lambda html, url, now: listings)
+    monkeypatch.setattr(scraper, "parse_air_job", lambda html, url, now: JobDraft(source="air", source_url=url, normalized_description="Text"))
+    database = Database(tmp_path / "jobs.sqlite3")
+    asyncio.run(scraper.AIRScraper(database, replace(Settings(), request_delay=0, headless=True)).run())
+    out = capsys.readouterr().out
+    assert "[AIR] Loading AIR Career Center board" in out
+    assert "[AIR] Found 2 listings" in out
+    assert "(2/2) ✓ Analyst 2 — AIR U" in out
+    assert "[AIR] Finished in" in out
