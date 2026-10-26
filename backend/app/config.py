@@ -19,6 +19,9 @@ class Settings:
     browser_channel: str | None = os.getenv("HEJ_BROWSER_CHANNEL") or None
     cache_hours: float = max(0, float(os.getenv("HEJ_CACHE_HOURS", "24")))
     timeout_ms: int = int(os.getenv("HEJ_TIMEOUT_MS", "30000"))
+    # HigherEdJobs listings posted longer ago than this are skipped, and a search stops paging once a
+    # whole results page is older. 0 means no limit.
+    max_age_days: int = max(0, int(os.getenv("HEJ_MAX_AGE_DAYS", "14")))
     state_path: Path = ROOT / "data/browser-state.json"
     verification_timeout_s: float = float(os.getenv("HEJ_VERIFICATION_TIMEOUT", "300"))
     storage_state: str | None = os.getenv("HEJ_STORAGE_STATE") or (str(ROOT / "data/browser-state.json") if (ROOT / "data/browser-state.json").exists() else None)

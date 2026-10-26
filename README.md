@@ -15,6 +15,10 @@ Local job discovery and sponsorship-language review based on `HigherEdJobs_PRD.m
 
 `./run.sh` rebuilds the dashboard if its source changed, serves the API and dashboard at `http://127.0.0.1:8000`, opens it, and starts the HigherEdJobs and AIR runs. Saved jobs show immediately; new ones appear as they are fetched.
 
+HigherEdJobs runs only look back **14 days**: older listings are skipped, and each search stops
+paging once a whole results page is older than that. Listings with no date are kept. Change it with
+`HEJ_MAX_AGE_DAYS` in `.env` (`0` means no limit). AIR is a single small board and is always read in full.
+
 If HigherEdJobs asks for human verification, you hear a sound and the terminal prints a message. Solve the check in the browser window the run opened. The run waits up to 5 minutes (`HEJ_VERIFICATION_TIMEOUT`, in seconds), saves the session, and continues. `scripts/codegen.sh` is no longer needed for daily runs.
 
 Each job page is opened at most once: not again when another search group matches it, and not on later runs once it is saved. The "University IT Titles" group repeats the Software and Systems queries, so it is off by default; re-enable it under **Search sources** if wanted.

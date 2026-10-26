@@ -232,3 +232,31 @@ def test_air_rerun_skips_listings_already_saved(tmp_path, monkeypatch, capsys):
     assert url not in loads
     assert tuple(status) == ("Complete", "Applied")
     assert "(1/1) ↺ Analyst — already saved" in capsys.readouterr().out
+
+
+def test_old_listings_are_skipped_and_paging_stops_once_a_page_is_all_old(tmp_path, monkeypatch, capsys):
+    from datetime import date, timedelta
+
+    today = date.today()
+    recent = JobDraft(higheredjobs_url="https://h/recent", posted_date=(today - timedelta(days=3)).isoformat())
+    old = JobDraft(higheredjobs_url="https://h/old", posted_date=(today - timedelta(days=20)).isoformat())
+    older = JobDraft(higheredjobs_url="https://h/older", posted_date=(today - timedelta(days=30)).isoformat())
+    undated = JobDraft(higheredjobs_url="https://h/undated")
+    pages = [[recent, old, undated], [older], [JobDraft(higheredjobs_url="https://h/never", posted_date=today.isoformat())]]
+    monkeypatch.setattr(scraper, "parse_results", lambda html, url, now: pages.pop(0))
+    monkeypatch.setattr(scraper, "parse_job", lambda html, url, now: JobDraft(higheredjobs_url=url, normalized_description="Text"))
+    clicks = []
+
+    class NextLink(FakeLocator):
+        async def count(self): return 1
+        async def is_visible(self): return True
+        async def click(self): clicks.append(1)
+
+    monkeypatch.setattr(FakePage, "get_by_role", lambda self, role, name=None: NextLink() if name == "Next page" else FakeLocator())
+    database = Database(tmp_path / "jobs.sqlite3")
+    job_scraper = scraper.HigherEdJobsScraper(database, replace(Settings(), request_delay=0, headless=True, max_age_days=14))
+    asyncio.run(job_scraper._run_group(FakeContext(), {"id": "data", "name": "Data", "query": "q"}, {}, []))
+    saved = {row[0] for row in database.connection.execute("SELECT higheredjobs_url FROM jobs")}
+    assert saved == {"https://h/recent", "https://h/undated"}
+    assert len(clicks) == 1
+    assert "older than 14 days" in capsys.readouterr().out
