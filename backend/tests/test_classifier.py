@@ -24,11 +24,13 @@ def test_explicit_sponsorship_denials_are_not_worth_it(description):
     assert result.classifier_version == VERSION
 
 
-def test_authorization_requirement_alone_remains_reviewable():
+def test_authorization_requirement_alone_is_neutral_for_opt():
+    # An F-1 OPT holder is authorized at hire, so this alone says nothing about future sponsorship.
     result = classify("Applicants must be authorized to work in the U.S.")
 
-    assert result.status == "Unsure - Review"
+    assert result.status == "No Mention Found"
     assert result.confidence == "Low"
+    assert result.evidence == "Applicants must be authorized to work in the U.S."
 
 
 def test_explicit_denial_wins_over_authorization_requirement():

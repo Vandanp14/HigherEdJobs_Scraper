@@ -1,13 +1,36 @@
-"""Deterministic, versioned rules. Evidence is always an exact source substring."""
+"""Deterministic, versioned rules. Evidence is always an exact source substring.
 
+Tuned for an F-1 OPT -> STEM OPT -> cap-exempt H-1B path: current work authorization alone is
+fine, any refusal of future sponsorship is not, and a hedge never becomes a hard "Not Worth It".
+"""
+
+import html
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
-VERSION = "1.1.0"
+VERSION = "2.0.0"
 TRIGGER = re.compile(
     r"\b(?:visa(?:\s+sponsorship)?|sponsor(?:ship|ing|ed|s)?|h[-‑–]?1b|"
     r"work\s+authorization|employment\s+authorization|authorized\s+to\s+work|"
-    r"legally\s+authorized)\b", re.I,
+    r"legally\s+authorized|lawfully\s+authorized|u\.?s\.?\s+citizen(?:s|ship)?|"
+    r"permanent\s+residents?|green\s+card|security\s+clearance)\b", re.I,
+)
+# Current authorization only. An OPT holder meets it, so on its own it is neutral.
+AUTHORIZATION_ONLY = re.compile(
+    r"^(?:work\s+authorization|employment\s+authorization|authorized\s+to\s+work|"
+    r"legally\s+authorized|lawfully\s+authorized)$", re.I,
+)
+COUNTRIES = r"(?:china|canada|the\s+uk|united\s+kingdom|qatar|the\s+uae|uae|singapore|hong\s+kong|australia)"
+# Trigger words used for something other than U.S. work sponsorship.
+NOISE = re.compile(
+    r"\b\w+-sponsored\b|"
+    r"\bsponsored\s+(?:research|projects?|programs?|events?|activities|volunteer\w*|travel|trips?)\b|"
+    r"\b(?:sponsors?\s+)?(?:working\s+|work\s+)?visas?\b[^.\n]{0,60}?\bin\s+" + COUNTRIES + r"\b",
+    re.I,
+)
+HEDGE = re.compile(r"\bmay\b|\bmight\b|not\s+guaranteed")
+FORM_FIELD = re.compile(
+    r"^[^\n]*(?:sponsor|visa)[^\n]*:[ \t]*(?:\n[ \t]*)*(yes|no)[ \t]*(?=\n|$)", re.I | re.M,
 )
 
 # Match within clauses rather than joining unrelated sentences across a posting.
@@ -27,6 +50,12 @@ NEGATIVE = [
     r"\bnot\s+eligible\s+for\s+(?:\w+[ -]){0,3}sponsorship\b",
     r"\bwithout\s+(?:(?:current|future)\s+(?:(?:or|and)\s+)?){0,2}(?:visa\s+|employer\s+)?sponsorship\b",
     r"\bno\s+(?:visa\s+|h[-‑–]?1b\s+)?sponsorship\s+(?:is\s+)?(?:available|provided|offered)\b",
+    # The H-1B step comes later for an OPT holder, so refusing future sponsorship is decisive.
+    r"\bsponsor\w*\b.{0,60}\b(?:now\s+or\s+in\s+the\s+future|now\s+or\s+future|current\s+or\s+future)\b",
+    r"\b(?:only\s+(?:u\.?s\.?\s+)?citizens|must\s+be\s+a\s+u\.?s\.?\s+citizen|"
+    r"(?:u\.?s\.?\s+)?citizenship\s+(?:is\s+)?required|permanent\s+residents?\s+only|green\s+card\s+required)\b",
+    r"\b(?:(?:must|required\s+to)\s+(?:have|hold|obtain)\b.{0,40}security\s+clearance|"
+    r"security\s+clearance\s+(?:is\s+)?required)\b",
 ]
 LIKELY = [
     r"\b(?:must|require\w*|already)\b.{0,80}\bunrestricted\b.{0,30}\b(?:work|employment)\s+authorization\b",
@@ -35,6 +64,11 @@ POSITIVE = [
     r"\b(?:visa\s+|h[-‑–]?1b\s+)?sponsorship\s+(?:is|may\s+be|can\s+be|will\s+be)\s+(?:available|provided|offered|considered)\b",
     r"\b(?:will|can|may)\s+(?:provide\s+(?:visa\s+|h[-‑–]?1b\s+)?sponsorship|sponsor\s+(?:qualified\s+)?(?:candidates|applicants))\b",
 ]
+COLLEGE_WORDS = re.compile(
+    r"university|college|institute|school|academy|seminary|conservatory|poly|tech|state|suny|cuny|"
+    r"community college|board of regents|system|medicine|medical|health|hospital|campus|"
+    r"william & mary|cornell|arts center", re.I,
+)
 
 
 @dataclass
@@ -45,6 +79,7 @@ class Analysis:
     evidence_context: str | None
     matched_terms: list[str]
     classifier_version: str = VERSION
+    signals: list[str] = field(default_factory=list)
 
     def as_dict(self):
         return asdict(self)
@@ -61,25 +96,55 @@ def sentences(paragraph: str):
             yield clause
 
 
-def classify(description: str) -> Analysis:
+def signals(description: str, institution: str | None) -> list[str]:
+    found = []
+    if re.search(r"\be-?verify\b", description, re.I):
+        found.append("E-Verify")
+    if re.search(r"\bcap[\s-]exempt\b", description, re.I):
+        found.append("Cap-exempt")
+    if institution and not COLLEGE_WORDS.search(html.unescape(institution)):
+        found.append("Non-college employer")
+    return found
+
+
+def rate(sentence: str) -> tuple[float, str, str] | None:
+    """Rank, status, and confidence for one sentence, or None when it says nothing about sponsorship."""
+    lowered = NOISE.sub(" ", sentence.lower().replace("’", "'"))
+    found = [match[0] for match in TRIGGER.finditer(lowered)]
+    if not found:
+        return None
+    hedged = bool(HEDGE.search(lowered))
+    if any(re.search(p, lowered) for p in NEGATIVE):
+        # A hedge keeps a job visible: false "Not Worth It" is the costliest mistake.
+        return (2, "Likely No Sponsorship", "Medium") if hedged else (4, "Not Worth It", "High")
+    if any(re.search(p, lowered) for p in POSITIVE) and not re.search(r":\s*no\b", lowered):
+        return 3, "Sponsorship Possible", "Medium" if hedged or "considered" in lowered else "High"
+    if hedged and re.search(r"\bnot\b|\bno\b", lowered) and re.search(r"sponsor|visa|h[-‑–]?1b", lowered):
+        return 2, "Likely No Sponsorship", "Medium"
+    if any(re.search(p, lowered) for p in LIKELY):
+        return 2, "Likely No Sponsorship", "Medium"
+    if all(AUTHORIZATION_ONLY.match(term) for term in found):
+        return 0.5, "No Mention Found", "Low"
+    return 1, "Unsure - Review", "Low"
+
+
+def classify(description: str, institution: str | None = None) -> Analysis:
     candidates = []
-    terms = list(dict.fromkeys(m[0] for m in TRIGGER.finditer(description)))
+    terms = list(dict.fromkeys(m[0] for m in TRIGGER.finditer(NOISE.sub(" ", description))))
+    for match in FORM_FIELD.finditer(description):
+        if match[1].lower() == "no":
+            candidates.append((4, Analysis("Not Worth It", "High", match[0], match[0], terms)))
+        else:
+            candidates.append((3, Analysis("Sponsorship Possible", "High", match[0], match[0], terms)))
     for paragraph in description.splitlines():
         for sentence in sentences(paragraph):
-            if not TRIGGER.search(sentence):
-                continue
-            lowered = sentence.lower().replace("’", "'")
-            if any(re.search(p, lowered) for p in NEGATIVE):
-                rank, status, confidence = 4, "Not Worth It", "High"
-            elif any(re.search(p, lowered) for p in POSITIVE):
-                rank, status, confidence = 3, "Sponsorship Possible", "High"
-                if "may " in lowered or "considered" in lowered:
-                    confidence = "Medium"
-            elif any(re.search(p, lowered) for p in LIKELY):
-                rank, status, confidence = 2, "Likely No Sponsorship", "Medium"
-            else:
-                rank, status, confidence = 1, "Unsure - Review", "Low"
-            candidates.append((rank, Analysis(status, confidence, sentence, paragraph.strip(), terms)))
+            rated = rate(sentence)
+            if rated:
+                rank, status, confidence = rated
+                candidates.append((rank, Analysis(status, confidence, sentence, paragraph.strip(), terms)))
+    found_signals = signals(description, institution)
     if not candidates:
-        return Analysis("No Mention Found", "Low", None, None, terms)
-    return max(candidates, key=lambda item: item[0])[1]
+        return Analysis("No Mention Found", "Low", None, None, terms, signals=found_signals)
+    best = max(candidates, key=lambda item: item[0])[1]
+    best.signals = found_signals
+    return best
