@@ -45,3 +45,13 @@ def test_e_verify_negation_is_not_a_positive_badge():
     signals = classify("The college does not participate in E-Verify and cannot support a STEM OPT extension.").signals
     assert "E-Verify" not in signals
     assert "No E-Verify" in signals
+
+
+def test_long_line_without_full_stops_classifies_quickly():
+    # Descriptions come from external sites; an unbounded leading [^.\n]* made this quadratic.
+    import time
+
+    text = "word green card " * 6000
+    started = time.perf_counter()
+    classify(text)
+    assert time.perf_counter() - started < 0.5

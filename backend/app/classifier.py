@@ -28,8 +28,9 @@ NOISE = re.compile(
     r"\b(?:sponsors?\s+)?(?:working\s+|work\s+)?visas?\b[^.\n]{0,60}?\bin\s+" + COUNTRIES + r"\b|"
     r"\b(?:does\s+not|doesn't|do\s+not)\s+require\s+(?:an?\s+)?(?:active\s+)?security\s+clearance\b|"
     r"\bno\s+(?:security\s+clearance|green\s+card)\s+(?:is\s+)?required\b|"
-    r"[^.\n]*\b(?:security\s+clearance|green\s+card)\b[^.\n]*\b(?:preferred|not\s+required)\b[^.\n]*|"
-    r"\b(?:do|does)\s+not\s+need\s+to\s+(?:request|provide|submit|show)\b[^.\n]*",
+    # Bounded windows only: descriptions are external text, and an unbounded leading [^.\n]* is quadratic.
+    r"\b(?:security\s+clearance|green\s+card)\b[^.\n]{0,80}?\b(?:preferred|not\s+required)\b|"
+    r"\b(?:do|does)\s+not\s+need\s+to\s+(?:request|provide|submit|show)\b[^.\n]{0,120}",
     re.I,
 )
 FUTURE = r"(?:now\s+or\s+in\s+the\s+future|now\s+or\s+future|current(?:ly)?\s+or\s+(?:in\s+the\s+)?future)"
@@ -41,7 +42,7 @@ HEDGE = re.compile(r"\bmay\b|\bmight\b|guarantee")
 QUALIFIER = re.compile(r"\b(?:but|however|except)\b")
 # Only labels that ask whether sponsorship is offered; "Visa restrictions: No" means the opposite.
 FORM_FIELD = re.compile(
-    r"^[^\n]*(?:sponsorship\s+(?:is\s+)?(?:available|provided|offered)|visa\s+sponsorship)[^\n]*:"
+    r"^[^\n]{0,200}?(?:sponsorship\s+(?:is\s+)?(?:available|provided|offered)|visa\s+sponsorship)[^\n]{0,200}?:"
     r"[ \t]*(?:\n[ \t]*)*(yes|no)[ \t]*(?=\n|$)", re.I | re.M,
 )
 
