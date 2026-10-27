@@ -66,61 +66,70 @@ class HigherEdJobsScraper:
         name = group["name"]
         report(HEJ, f"{name}: searching")
         page, detail = await self._tabs_for(context)
-        await page.goto(ADVANCED, wait_until="domcontentloaded"); await self._ensure_access(page)
         categories = [value for value in (group.get("categories") or "").split(",") if value]
-        if categories: await page.locator("select[name=JobCat]").select_option(categories)
-        keyword = page.get_by_role("textbox", name="Keyword Use quotes to search")
-        await keyword.fill(group["query"]); await page.get_by_role("button", name="Search Jobs").click()
-        await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page)
-        seen=set(); discovered=new=updated=failed=skipped_old=off_field=0; page_number=1
+        seen=set(); discovered=new=updated=failed=skipped_old=off_field=0
         days = self.settings.max_age_days
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat() if days else None
-        while True:
-            html=await page.content(); now=datetime.now(timezone.utc); listings=parse_results(html, page.url, now)
-            report(HEJ, f"{name} page {page_number}: {len(listings)} listings")
-            # Undated listings are kept: a missing date is not evidence that a job is old.
-            too_old = [listing for listing in listings if cutoff and listing.posted_date and listing.posted_date < cutoff]
-            skipped_old += len(too_old)
-            for listing in listings:
-                if listing in too_old: continue
-                key=listing.higheredjobs_url
-                if key in seen: continue
-                seen.add(key)
-                # Keyword searches match anywhere in a description, so their results must name a CS role
-                # in the title. Category results are already filed under an IT category by HigherEdJobs.
-                # Teaching roles are dropped from both.
-                if listing.title and (is_teaching_title(listing.title) or (not categories and not is_cs_title(listing.title))):
-                    off_field += 1; continue
-                discovered += 1
-                label = listing.title or key
-                if key in fetched:
-                    self.database.add_match(fetched[key], group["id"])
-                    report(HEJ, f"  ↺ {label} — already saved; added to {name}"); continue
-                try:
-                    await detail.goto(key, wait_until="domcontentloaded"); await self._ensure_access(detail)
-                    full=parse_job(await detail.content(), detail.url, now)
-                    for field in ("title","institution","location","city","state","salary","posted_date"):
-                        setattr(full, field, getattr(full, field) or getattr(listing, field))
-                    fetched[key], is_new = self.database.upsert_job(full,group["id"]); new += int(is_new); updated += int(not is_new)
-                    report(HEJ, f"  ✓ {full.title or label} — {full.institution or 'unknown institution'}")
-                except Exception as error:
-                    # One bad page (timeout, block, unparseable) must not end the group.
-                    listing.description_status = "Failed"
-                    fetched[key], _ = self.database.upsert_job(listing,group["id"]); updated += 1; failed += 1
-                    errors.append({"group":name,"listing_url":key,"error":str(error)})
-                    report(HEJ, f"  ✗ {label} — {str(error).splitlines()[0] if str(error) else type(error).__name__}")
-                finally: await asyncio.sleep(self.settings.request_delay)
-            if listings and len(too_old) == len(listings):
-                report(HEJ, f"{name}: page {page_number} is all older than {days} days; stopping this search"); break
-            next_link=page.get_by_role("link", name="Next page")
-            if await next_link.count() and await next_link.is_visible():
-                await next_link.click(); await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page); await asyncio.sleep(self.settings.request_delay)
-                page_number += 1
-            else: break
+        # HigherEdJobs rejects a search with more than 30 categories, so larger groups run in batches.
+        batches = [categories[index:index + 30] for index in range(0, len(categories), 30)] or [[]]
+        for batch in batches:
+            await self._search(page, group["query"], batch); page_number=1
+            while True:
+                html=await page.content(); now=datetime.now(timezone.utc); listings=parse_results(html, page.url, now)
+                report(HEJ, f"{name} page {page_number}: {len(listings)} listings")
+                # Undated listings are kept: a missing date is not evidence that a job is old.
+                too_old = [listing for listing in listings if cutoff and listing.posted_date and listing.posted_date < cutoff]
+                skipped_old += len(too_old)
+                for listing in listings:
+                    if listing in too_old: continue
+                    key=listing.higheredjobs_url
+                    if key in seen: continue
+                    seen.add(key)
+                    # Keyword searches match anywhere in a description and non-IT categories hold mostly other
+                    # roles, so their results must name a CS role in the title. Trusted IT categories are
+                    # already filed under IT by HigherEdJobs. Teaching roles are dropped from all groups.
+                    if listing.title and (is_teaching_title(listing.title) or (not group.get("trusted") and not is_cs_title(listing.title))):
+                        off_field += 1; continue
+                    discovered += 1
+                    label = listing.title or key
+                    if key in fetched:
+                        self.database.add_match(fetched[key], group["id"])
+                        report(HEJ, f"  ↺ {label} — already saved; added to {name}"); continue
+                    try:
+                        await detail.goto(key, wait_until="domcontentloaded"); await self._ensure_access(detail)
+                        full=parse_job(await detail.content(), detail.url, now)
+                        for field in ("title","institution","location","city","state","salary","posted_date"):
+                            setattr(full, field, getattr(full, field) or getattr(listing, field))
+                        fetched[key], is_new = self.database.upsert_job(full,group["id"]); new += int(is_new); updated += int(not is_new)
+                        report(HEJ, f"  ✓ {full.title or label} — {full.institution or 'unknown institution'}")
+                    except Exception as error:
+                        # One bad page (timeout, block, unparseable) must not end the group.
+                        listing.description_status = "Failed"
+                        fetched[key], _ = self.database.upsert_job(listing,group["id"]); updated += 1; failed += 1
+                        errors.append({"group":name,"listing_url":key,"error":str(error)})
+                        report(HEJ, f"  ✗ {label} — {str(error).splitlines()[0] if str(error) else type(error).__name__}")
+                    finally: await asyncio.sleep(self.settings.request_delay)
+                if listings and len(too_old) == len(listings):
+                    report(HEJ, f"{name}: page {page_number} is all older than {days} days; stopping this search"); break
+                next_link=page.get_by_role("link", name="Next page")
+                if await next_link.count() and await next_link.is_visible():
+                    await next_link.click(); await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page); await asyncio.sleep(self.settings.request_delay)
+                    page_number += 1
+                else: break
         old_note = f", {skipped_old} older than {days} days skipped" if skipped_old else ""
         old_note += f", {off_field} off-field or teaching titles skipped" if off_field else ""
         report(HEJ, f"{name} done: {discovered} listings, {new} new, {failed} failed{old_note}")
         return discovered,new,updated
+
+    async def _search(self, page, query: str, categories: list[str]):
+        await page.goto(ADVANCED, wait_until="domcontentloaded"); await self._ensure_access(page)
+        if categories: await page.locator("select[name=JobCat]").select_option(categories)
+        keyword = page.get_by_role("textbox", name="Keyword Use quotes to search")
+        await keyword.fill(query); await page.get_by_role("button", name="Search Jobs").click()
+        await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page)
+        # 100 results per page instead of 25 keeps the large category searches to a few page loads.
+        if "NumJobs=" not in page.url:
+            await page.goto(page.url + ("&" if "?" in page.url else "?") + "NumJobs=100", wait_until="domcontentloaded"); await self._ensure_access(page)
 
     async def _tabs_for(self, context: BrowserContext):
         if context not in self._tabs:

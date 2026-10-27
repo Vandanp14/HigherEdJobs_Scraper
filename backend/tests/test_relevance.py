@@ -49,6 +49,10 @@ CS_TITLES = [
     "Systems R&D Engineer",
     "Systems and Applications Development Librarian",
     "Institutional Research Analyst",
+    "CRM Analyst",
+    "Lead Identity & Access Management Engineer",
+    "Application Solutions Analyst",
+    "Hardware Asset Management Process Owner",
 ]
 
 OFF_FIELD_TITLES = [
@@ -65,6 +69,12 @@ OFF_FIELD_TITLES = [
     "Program Associate, Graduate Clinical Placement",
     "Director of Development Research, RPD (10008996)",
     "Procurement Transformation Manager (CEMI)",
+    "Area Coordinator for Residence Life and Residential Programming (12 month live-in position)",
+    "Programming & Outreach Specialist - Gephardt Institute for Civic and Community Engagement",
+    "Job Developer, Gateway to Innovation (Grant-funded)",
+    "IB Assessment Content Developer for Finnish B (Diploma Programme)",
+    "Part-Time Career and Business Services Developer",
+    "Biorepository Supply Coordinator - CTO",
     "Coding Coordinator (Primary - Specialty Care) - Professional Coding Division (PCD)",
     "Assistant Professor, Industrial and Systems Engineering (Advanced Manufacturing Operations)",
 ]
@@ -81,6 +91,11 @@ def test_off_field_titles_are_dropped(title):
 
 
 TEACHING_TITLES = [
+    "Dean of the Erik Jonsson School of Engineering and Computer Science",
+    "Department Chair - Electrical and Computer Engineering",
+    "Remote Grading Assistant - Software Development Life Cycle (SDLC) II (Spring 2027)",
+    "Multiple Open Rank Tenured/Tenure-Track Fac in Lifetime Learning Sys, Learning Sci, AI in Education",
+    "Tenure-Track Data Science Position",
     "Visiting Assistant Professor of Computer Science",
     "Adjunct Lecturer - Health Informatics",
     "Senior Lecturer of Data Science",
@@ -140,12 +155,12 @@ def test_keyword_group_keeps_cs_title(tmp_path, monkeypatch):
 
 
 def test_category_group_keeps_any_title(tmp_path, monkeypatch):
-    _, context, counts = run_group(tmp_path, monkeypatch, "Digital Content Specialist", {"id": "cat_web", "name": "Web", "query": "", "categories": "160"})
+    _, context, counts = run_group(tmp_path, monkeypatch, "Digital Content Specialist", {"id": "cat_web", "name": "Web", "query": "", "categories": "160", "trusted": True})
     assert context.detail_loads == 1 and counts == (1, 1, 0)
 
 
 def test_category_group_skips_teaching_title(tmp_path, monkeypatch):
-    _, context, counts = run_group(tmp_path, monkeypatch, "Adjunct Faculty - Computer Science", {"id": "cat_web", "name": "Web", "query": "", "categories": "160"})
+    _, context, counts = run_group(tmp_path, monkeypatch, "Adjunct Faculty - Computer Science", {"id": "cat_web", "name": "Web", "query": "", "categories": "160", "trusted": True})
     assert context.detail_loads == 0 and counts == (0, 0, 0)
 
 
@@ -158,3 +173,20 @@ def test_dashboard_hides_saved_off_field_keyword_jobs(tmp_path):
     db.upsert_job(JobDraft(source="air", source_url="https://air/4", higheredjobs_url="https://air/4", title="Director of Planning"))
     titles = {job["title"] for job in db.jobs(days="all", per_page=100)["items"]}
     assert titles == {"Software Developer", "Digital Content Specialist", "Director of Planning"}
+
+
+def test_title_checked_category_group_skips_off_field_title(tmp_path, monkeypatch):
+    group = {"id": "cat_cs_related", "name": "Related", "query": "", "categories": "31", "trusted": False}
+    _, context, counts = run_group(tmp_path, monkeypatch, "Director of Planning", group)
+    assert context.detail_loads == 0 and counts == (0, 0, 0)
+    _, context, counts = run_group(tmp_path / "b", monkeypatch, "Institutional Research Data Analyst", group)
+    assert context.detail_loads == 1 and counts == (1, 1, 0)
+
+
+def test_dashboard_needs_cs_title_for_title_checked_category(tmp_path):
+    db = Database(tmp_path / "jobs.sqlite3")
+    db.upsert_job(JobDraft(higheredjobs_url="https://x/1", title="Assessment Coordinator"), "cat_cs_related")
+    db.upsert_job(JobDraft(higheredjobs_url="https://x/2", title="Research Data Analyst"), "cat_cs_related")
+    db.upsert_job(JobDraft(higheredjobs_url="https://x/3", title="Help Center Associate"), "cat_it_support")
+    titles = {job["title"] for job in db.jobs(days="all", per_page=100)["items"]}
+    assert titles == {"Research Data Analyst", "Help Center Associate"}

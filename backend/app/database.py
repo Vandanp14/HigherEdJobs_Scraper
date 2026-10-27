@@ -8,6 +8,7 @@ from pathlib import Path
 from .classifier import VERSION, classify
 from .config import SEARCH_GROUPS
 from .parser import JobDraft, normalize_air_description, normalize_hej_description
+from .fuzzy import fuzzy_match
 from .relevance import is_cs_title, is_teaching_title
 
 
@@ -35,13 +36,15 @@ class Database:
         self.connection.execute("PRAGMA foreign_keys = ON")
         self.connection.create_function("cs_title", 1, is_cs_title, deterministic=True)
         self.connection.create_function("teaching_title", 1, is_teaching_title, deterministic=True)
+        self.connection.create_function("fuzzy_match", 4, fuzzy_match, deterministic=True)
         self.migrate()
 
     def migrate(self):
         self.connection.executescript("""
         CREATE TABLE IF NOT EXISTS search_groups (
           id TEXT PRIMARY KEY, name TEXT NOT NULL, query TEXT NOT NULL,
-          categories TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1, priority INTEGER NOT NULL
+          categories TEXT NOT NULL DEFAULT '', trusted INTEGER NOT NULL DEFAULT 0,
+          enabled INTEGER NOT NULL DEFAULT 1, priority INTEGER NOT NULL
         );
         CREATE TABLE IF NOT EXISTS jobs (
           id INTEGER PRIMARY KEY, higheredjobs_id TEXT UNIQUE, source TEXT NOT NULL DEFAULT 'higheredjobs',
@@ -76,10 +79,10 @@ class Database:
         self._migrate_columns()
         # Config is the source of truth for each group's search; only the enabled choice is the user's.
         self.connection.executemany(
-            "INSERT INTO search_groups (id,name,query,categories,priority) VALUES (?,?,?,?,?) "
+            "INSERT INTO search_groups (id,name,query,categories,trusted,priority) VALUES (?,?,?,?,?,?) "
             "ON CONFLICT(id) DO UPDATE SET name=excluded.name, query=excluded.query, "
-            "categories=excluded.categories, priority=excluded.priority",
-            [(identifier, name, query, categories, index) for index, (identifier, name, query, categories) in enumerate(SEARCH_GROUPS)],
+            "categories=excluded.categories, trusted=excluded.trusted, priority=excluded.priority",
+            [(identifier, name, query, categories, int(trusted), index) for index, (identifier, name, query, categories, trusted) in enumerate(SEARCH_GROUPS)],
         )
         # "University IT Titles" repeats the software and systems queries. Disable it once so a
         # user who re-enables it in Search sources keeps that choice across restarts.
@@ -97,7 +100,7 @@ class Database:
                 "application_due_date": "TEXT",
             },
             "scrape_runs": {"source": "TEXT NOT NULL DEFAULT 'higheredjobs'"},
-            "search_groups": {"categories": "TEXT NOT NULL DEFAULT ''"},
+            "search_groups": {"categories": "TEXT NOT NULL DEFAULT ''", "trusted": "INTEGER NOT NULL DEFAULT 0"},
             "sponsorship_analysis": {"signals": "TEXT NOT NULL DEFAULT '[]'"},
         }
         for table, columns in migrations.items():
@@ -125,7 +128,7 @@ class Database:
         )
 
     def groups(self):
-        return [dict(row) | {"enabled": bool(row["enabled"])} for row in self.connection.execute("SELECT * FROM search_groups ORDER BY priority")]
+        return [dict(row) | {"enabled": bool(row["enabled"]), "trusted": bool(row["trusted"])} for row in self.connection.execute("SELECT * FROM search_groups ORDER BY priority")]
 
     def set_group_enabled(self, group_id: str, enabled: bool):
         cursor = self.connection.execute("UPDATE search_groups SET enabled=? WHERE id=?", (enabled, group_id))
@@ -278,15 +281,15 @@ class Database:
 
     def jobs(self, query: str = "", group: str = "", sponsorship: str = "", application_status: str = "", days: str = "7", sort: str = "newest", page: int = 1, per_page: int = 50, source: str = "", description: str = "", due: str = ""):
         # HigherEdJobs keyword matches saved before the title filter can be off-field (a chemistry
-        # faculty post that mentions "data analysis"); show only CS titles or category matches, and
-        # never teaching roles.
+        # faculty post that mentions "data analysis"); show only CS titles or trusted IT category
+        # matches, and never teaching roles.
         clauses, values = ["(j.source != 'higheredjobs' OR j.title IS NULL OR (NOT teaching_title(j.title) AND (cs_title(j.title) OR EXISTS ("
                            "SELECT 1 FROM job_search_matches cm JOIN search_groups cg ON cg.id=cm.search_group_id "
-                           "WHERE cm.job_id=j.id AND cg.categories != ''))))"], []
+                           "WHERE cm.job_id=j.id AND cg.trusted=1))))"], []
         if source:
             clauses.append("j.source=?"); values.append(source)
         if query:
-            clauses.append("(j.title LIKE ? OR j.institution LIKE ? OR j.location LIKE ?)"); values += [f"%{query}%"] * 3
+            clauses.append("fuzzy_match(?, j.title, j.institution, j.location)"); values.append(query)
         if group:
             group_ids = [item for item in group.split(",") if item]
             if group_ids:
