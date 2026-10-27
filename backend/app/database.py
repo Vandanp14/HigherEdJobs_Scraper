@@ -269,7 +269,7 @@ class Database:
         )
         self.connection.commit()
 
-    def jobs(self, query: str = "", group: str = "", sponsorship: str = "", application_status: str = "", days: str = "7", sort: str = "newest", page: int = 1, per_page: int = 50, source: str = "", description: str = ""):
+    def jobs(self, query: str = "", group: str = "", sponsorship: str = "", application_status: str = "", days: str = "7", sort: str = "newest", page: int = 1, per_page: int = 50, source: str = "", description: str = "", due: str = ""):
         clauses, values = ["1=1"], []
         if source:
             clauses.append("j.source=?"); values.append(source)
@@ -291,10 +291,17 @@ class Database:
         elif description == "failed":
             clauses.append("j.description_status='Failed' AND (j.normalized_description IS NULL OR TRIM(j.normalized_description) = '')")
         if application_status: clauses.append("j.application_status=?"); values.append(application_status)
-        elif days != "all": clauses.append("j.application_status != 'Skipped'")
+        elif days != "all" and due != "all": clauses.append("j.application_status != 'Skipped'")
         if days not in ("", "all"):
             clauses.append("(j.source='air' OR j.posted_date >= date('now', ?))"); values.append(f"-{int(days)} days")
-        order = {"oldest":"COALESCE(j.posted_date, substr(j.first_seen_at,1,10)) ASC", "first_seen":"j.first_seen_at DESC", "institution":"j.institution COLLATE NOCASE", "title":"j.title COLLATE NOCASE", "state":"j.state COLLATE NOCASE"}.get(sort, "COALESCE(j.posted_date, substr(j.first_seen_at,1,10)) DESC")
+        # AIR listings carry a due date instead of a posted date. Undated ones stay in the upcoming view.
+        if due == "upcoming":
+            clauses.append("(j.application_due_date IS NULL OR j.application_due_date >= date('now', 'localtime'))")
+        elif due == "expired":
+            clauses.append("j.application_due_date < date('now', 'localtime')")
+        elif due.isdigit():
+            clauses.append("j.application_due_date BETWEEN date('now', 'localtime') AND date('now', 'localtime', ?)"); values.append(f"+{int(due)} days")
+        order = {"oldest":"COALESCE(j.posted_date, substr(j.first_seen_at,1,10)) ASC", "first_seen":"j.first_seen_at DESC", "institution":"j.institution COLLATE NOCASE", "title":"j.title COLLATE NOCASE", "state":"j.state COLLATE NOCASE", "due_soon":"j.application_due_date IS NULL, j.application_due_date ASC", "due_late":"j.application_due_date IS NULL, j.application_due_date DESC"}.get(sort, "COALESCE(j.posted_date, substr(j.first_seen_at,1,10)) DESC")
         where = " AND ".join(clauses)
         total = self.connection.execute(f"SELECT COUNT(*) FROM jobs j LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id WHERE {where}", values).fetchone()[0]
         rows = self.connection.execute(f"""SELECT j.*, COALESCE(sa.status,'Unavailable') sponsorship_status, COALESCE(sa.confidence,'-') confidence, sa.evidence, sa.evidence_context, sa.matched_terms, COALESCE(sa.signals,'[]') signals, GROUP_CONCAT(sg.name, ' | ') search_groups FROM jobs j LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id LEFT JOIN job_search_matches jm ON jm.job_id=j.id LEFT JOIN search_groups sg ON sg.id=jm.search_group_id WHERE {where} GROUP BY j.id ORDER BY {order}, j.id DESC LIMIT ? OFFSET ?""", values + [per_page, (page - 1) * per_page]).fetchall()

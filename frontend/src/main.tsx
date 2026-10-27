@@ -27,6 +27,12 @@ type Job = {
 type Group = { id: string; name: string; query: string; enabled: boolean };
 type Source = { id: string; name: string; description: string; supports_queries: boolean; last_run?: Run | null };
 type Filters = Record<string, string>;
+type Board = 'higheredjobs' | 'air';
+// Each board keeps its own filters: HigherEdJobs is dated by posting, AIR by application due date.
+const defaultFilters: Record<Board, Filters> = {
+  higheredjobs: { query: '', group: '', sponsorship: '', description: '', application_status: '', days: '7', sort: 'newest' },
+  air: { query: '', sponsorship: '', description: '', application_status: '', due: 'upcoming', sort: 'due_soon' },
+};
 type Run = {
   source: string;
   completed_at: string | null;
@@ -69,12 +75,12 @@ function App() {
   const [showSources, setShowSources] = useState(false);
   const [notice, setNotice] = useState('');
   const [externalRun, setExternalRun] = useState(false);
-  const [filters, setFilters] = useState<Filters>({
-    query: '', group: '', sponsorship: '', description: '', application_status: '', days: '7', sort: 'newest', source: '',
-  });
-  const parameters = useMemo(() => new URLSearchParams(filters).toString(), [filters]);
-  const update = (key: string, value: string) => setFilters(current => ({ ...current, [key]: value }));
-  const sourceFilter = filters.source;
+  const [board, setBoard] = useState<Board>('higheredjobs');
+  const [boardFilters, setBoardFilters] = useState(defaultFilters);
+  const filters = boardFilters[board];
+  // AIR has no posted date, so its board turns off the posted-date window.
+  const parameters = useMemo(() => new URLSearchParams({ ...filters, source: board, ...(board === 'air' ? { days: '' } : {}) }).toString(), [filters, board]);
+  const update = (key: string, value: string) => setBoardFilters(current => ({ ...current, [board]: { ...current[board], [key]: value } }));
   const selectedGroups = filters.group ? filters.group.split(',') : [];
   const selectedSignals = filters.sponsorship ? filters.sponsorship.split(',') : [];
 
@@ -215,10 +221,14 @@ function App() {
     : [...selectedSignals, status].join(','));
   const sponsorshipLabels = [['Not Worth It', 'Not worth it'], ['Likely No Sponsorship', 'Likely no sponsorship'], ['Unsure - Review', 'Review needed'], ['No Mention Found', 'No mention found'], ['Sponsorship Possible', 'Sponsorship possible']];
   const options: [string, string[][]][] = [
-    ['days', [['0', 'Today'], ['3', 'Past 3 days'], ['7', 'Past 7 days'], ['14', 'Past 14 days'], ['30', 'Past 30 days'], ['all', 'All time']]],
+    board === 'air'
+      ? ['due', [['upcoming', 'Not expired'], ['7', 'Due in 7 days'], ['14', 'Due in 14 days'], ['30', 'Due in 30 days'], ['expired', 'Expired'], ['all', 'All dates']]]
+      : ['days', [['0', 'Today'], ['3', 'Past 3 days'], ['7', 'Past 7 days'], ['14', 'Past 14 days'], ['30', 'Past 30 days'], ['all', 'All time']]],
     ['description', [['complete', 'Complete only'], ['', 'Any description state'], ['missing', 'Missing description'], ['failed', 'Failed to capture']]],
     ['application_status', [['', 'Open work'], ['New', 'New'], ['Opened', 'Opened'], ['Applied', 'Applied'], ['Skipped', 'Skipped']]],
-    ['sort', [['newest', 'Newest posted'], ['oldest', 'Oldest posted'], ['first_seen', 'First seen'], ['institution', 'Institution'], ['title', 'Job title'], ['state', 'State']]],
+    ['sort', board === 'air'
+      ? [['due_soon', 'Due soonest'], ['due_late', 'Due latest'], ['first_seen', 'First seen'], ['institution', 'Institution'], ['title', 'Job title']]
+      : [['newest', 'Newest posted'], ['oldest', 'Oldest posted'], ['first_seen', 'First seen'], ['institution', 'Institution'], ['title', 'Job title'], ['state', 'State']]],
   ];
 
   return <div className="workspace">
@@ -242,17 +252,17 @@ function App() {
         </div>
       </section>}
       <section className="queue">
-        <div className="queue-header"><div><h2>Unified job queue</h2><span>{loading ? 'Refreshing results…' : `${total} roles in this view`}</span></div><span className="notice">Open source wording before making a decision.</span></div>
+        <div className="board-tabs" role="tablist" aria-label="Job board">{([['higheredjobs', 'HigherEdJobs'], ['air', 'AIR Career Center']] as [Board, string][]).map(([id, label]) => <button key={id} role="tab" aria-selected={board === id} className={board === id ? 'selected' : ''} onClick={() => { setBoard(id); setExpanded(null); }}>{label}</button>)}</div>
+        <div className="queue-header"><div><h2>{board === 'air' ? 'AIR Career Center queue' : 'HigherEdJobs queue'}</h2><span>{loading ? 'Refreshing results…' : `${total} roles in this view`}</span></div><span className="notice">Open source wording before making a decision.</span></div>
         <div className="toolbar">
           <label className="search"><Search size={16} /><input value={filters.query} onChange={event => update('query', event.target.value)} placeholder="Search title, institution, or location" /></label>
           <div className="filters">
-            <label><span>Source</span><select value={sourceFilter} onChange={event => { update('source', event.target.value); if (event.target.value === 'air') update('group', ''); }}><option value="">All sources</option><option value="higheredjobs">HigherEdJobs</option><option value="air">AIR Career Center</option></select></label>
-            {options.map(([key, values]) => <label key={key}><span>{key === 'days' ? 'Date' : key === 'sponsorship' ? 'Sponsorship' : key === 'description' ? 'Description' : key === 'application_status' ? 'Status' : 'Sort'}</span><select value={filters[key]} onChange={event => update(key, event.target.value)}>{values.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>)}
+            {options.map(([key, values]) => <label key={key}><span>{key === 'days' ? 'Posted' : key === 'due' ? 'Due' : key === 'sponsorship' ? 'Sponsorship' : key === 'description' ? 'Description' : key === 'application_status' ? 'Status' : 'Sort'}</span><select value={filters[key]} onChange={event => update(key, event.target.value)}>{values.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>)}
           </div>
         </div>
         <div className="query-filter"><span>Sponsorship</span><button className={selectedSignals.length ? '' : 'selected'} onClick={() => update('sponsorship', '')}>All signals</button>{sponsorshipLabels.map(([status, label]) => <button key={status} aria-pressed={selectedSignals.includes(status)} className={selectedSignals.includes(status) ? 'selected' : ''} onClick={() => toggleSignal(status)}>{label}</button>)}</div>
-        {sourceFilter !== 'air' && <div className="query-filter"><span>Query filter</span><button className={selectedGroups.length ? '' : 'selected'} onClick={() => update('group', '')}>All queries</button>{groups.map(group => <button key={group.id} className={selectedGroups.includes(group.id) ? 'selected' : ''} onClick={() => toggleGroup(group.id)}>{group.name}</button>)}</div>}
-        <div className="table-scroll"><table><thead><tr><th className="role-col">Role</th><th>Location · Salary</th><th>Posted / Due</th><th>Sponsorship</th><th className="evidence-col">Evidence</th><th>Progress</th><th>Links</th></tr></thead><tbody>{jobs.map(job => <>{<tr key={job.id}>
+        {board === 'higheredjobs' && <div className="query-filter"><span>Query filter</span><button className={selectedGroups.length ? '' : 'selected'} onClick={() => update('group', '')}>All queries</button>{groups.map(group => <button key={group.id} className={selectedGroups.includes(group.id) ? 'selected' : ''} onClick={() => toggleGroup(group.id)}>{group.name}</button>)}</div>}
+        <div className="table-scroll"><table><thead><tr><th className="role-col">Role</th><th>Location · Salary</th><th>{board === 'air' ? 'Due' : 'Posted'}</th><th>Sponsorship</th><th className="evidence-col">Evidence</th><th>Progress</th><th>Links</th></tr></thead><tbody>{jobs.map(job => <>{<tr key={job.id}>
           <td className="role"><strong>{job.title || 'Untitled listing'}</strong><span>{job.institution || 'Institution unavailable'}</span><span className="role-source"><span className={'source-badge source-' + job.source}>{job.source === 'air' ? 'AIR' : 'HigherEdJobs'}</span>{job.search_groups && <small className="source-meta">{job.search_groups}</small>}</span></td>
           <td className="place"><span>{job.location || '—'}</span><small>{job.salary || 'Salary not listed'}</small></td>
           <td className="date"><small>{job.source === 'air' ? 'Due' : 'Posted'}</small><span>{(job.source === 'air' ? job.application_due_date : job.posted_date) || '—'}</span></td>

@@ -111,3 +111,44 @@ def test_sponsorship_filter_accepts_list_and_single(tmp_path):
         assert client.get("/api/jobs?days=all&sponsorship=").json()["total"] == 3
     finally:
         main.database = original
+
+
+def _air_job(database, job_id: str, due: str | None):
+    database.upsert(
+        JobDraft(
+            source="air",
+            source_job_id=job_id,
+            source_url=f"https://www.airweb.org/community/Career-Center/{job_id}",
+            title=f"AIR {job_id}",
+            application_due_date=due,
+            description_status="Pending",
+        )
+    )
+
+
+def test_air_jobs_sort_and_filter_by_due_date(tmp_path):
+    from datetime import date, timedelta
+
+    database = Database(tmp_path / "jobs.sqlite3")
+    today = date.today()
+    _air_job(database, "soon", (today + timedelta(days=3)).isoformat())
+    _air_job(database, "later", (today + timedelta(days=20)).isoformat())
+    _air_job(database, "expired", (today - timedelta(days=2)).isoformat())
+    _air_job(database, "undated", None)
+
+    titles = lambda **kw: [item["title"] for item in database.jobs(source="air", days="", **kw)["items"]]
+    assert titles(due="upcoming", sort="due_soon") == ["AIR soon", "AIR later", "AIR undated"]
+    assert titles(due="upcoming", sort="due_late") == ["AIR later", "AIR soon", "AIR undated"]
+    assert titles(due="7", sort="due_soon") == ["AIR soon"]
+    assert titles(due="30", sort="due_soon") == ["AIR soon", "AIR later"]
+    assert titles(due="expired", sort="due_soon") == ["AIR expired"]
+    assert len(titles(due="all", sort="due_soon")) == 4
+
+
+def test_skipped_air_jobs_show_only_in_all_due_view(tmp_path):
+    database = Database(tmp_path / "jobs.sqlite3")
+    _air_job(database, "skip", None)
+    job_id = database.jobs(source="air", days="all")["items"][0]["id"]
+    database.update_job(job_id, {"application_status": "Skipped"})
+    assert database.jobs(source="air", days="", due="upcoming")["total"] == 0
+    assert database.jobs(source="air", days="", due="all")["total"] == 1
