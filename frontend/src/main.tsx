@@ -24,7 +24,7 @@ type Job = {
   apply_url: string | null;
   description_status: string;
 };
-type Group = { id: string; name: string; query: string; enabled: boolean };
+type Group = { id: string; name: string; query: string; categories: string; enabled: boolean };
 type Source = { id: string; name: string; description: string; supports_queries: boolean; last_run?: Run | null };
 type Filters = Record<string, string>;
 type Board = 'higheredjobs' | 'air';
@@ -248,7 +248,7 @@ function App() {
         <div className="section-title"><div><h2>Search sources</h2><p>Run AIR independently or enable the keyword groups used by HigherEdJobs.</p></div><button className="icon-button" aria-label="Close search sources" onClick={() => setShowSources(false)}>×</button></div>
         <div className="source-grid">
           {sources.map(source => <div key={source.id} className="source source-info"><b>{source.name}</b><small>{source.description}</small><button className="source-run" onClick={source.id === 'air' ? runAir : runHigherEdJobs} disabled={Boolean(activeRun) || externalRun}>{activeRun === source.id ? `Running · ${elapsedLabel}` : 'Run source'}</button></div>)}
-          {groups.map(group => <label key={group.id} className="source"><input type="checkbox" checked={group.enabled} onChange={async event => { await request('/groups/' + group.id, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: event.target.checked }) }); load(); }} /><span><b>{group.name}</b><small>{group.query}</small></span></label>)}
+          {groups.map(group => <label key={group.id} className="source"><input type="checkbox" checked={group.enabled} onChange={async event => { await request('/groups/' + group.id, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: event.target.checked }) }); load(); }} /><span><b>{group.name}</b><small>{group.query || 'HigherEdJobs job category filter'}</small></span></label>)}
         </div>
       </section>}
       <section className="queue">

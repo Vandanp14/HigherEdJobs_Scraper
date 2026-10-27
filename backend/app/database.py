@@ -38,7 +38,7 @@ class Database:
         self.connection.executescript("""
         CREATE TABLE IF NOT EXISTS search_groups (
           id TEXT PRIMARY KEY, name TEXT NOT NULL, query TEXT NOT NULL,
-          enabled INTEGER NOT NULL DEFAULT 1, priority INTEGER NOT NULL
+          categories TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1, priority INTEGER NOT NULL
         );
         CREATE TABLE IF NOT EXISTS jobs (
           id INTEGER PRIMARY KEY, higheredjobs_id TEXT UNIQUE, source TEXT NOT NULL DEFAULT 'higheredjobs',
@@ -71,9 +71,12 @@ class Database:
         );
         """)
         self._migrate_columns()
+        # Config is the source of truth for each group's search; only the enabled choice is the user's.
         self.connection.executemany(
-            "INSERT OR IGNORE INTO search_groups (id,name,query,priority) VALUES (?,?,?,?)",
-            [(identifier, name, query, index) for index, (identifier, name, query) in enumerate(SEARCH_GROUPS)],
+            "INSERT INTO search_groups (id,name,query,categories,priority) VALUES (?,?,?,?,?) "
+            "ON CONFLICT(id) DO UPDATE SET name=excluded.name, query=excluded.query, "
+            "categories=excluded.categories, priority=excluded.priority",
+            [(identifier, name, query, categories, index) for index, (identifier, name, query, categories) in enumerate(SEARCH_GROUPS)],
         )
         # "University IT Titles" repeats the software and systems queries. Disable it once so a
         # user who re-enables it in Search sources keeps that choice across restarts.
@@ -91,6 +94,7 @@ class Database:
                 "application_due_date": "TEXT",
             },
             "scrape_runs": {"source": "TEXT NOT NULL DEFAULT 'higheredjobs'"},
+            "search_groups": {"categories": "TEXT NOT NULL DEFAULT ''"},
             "sponsorship_analysis": {"signals": "TEXT NOT NULL DEFAULT '[]'"},
         }
         for table, columns in migrations.items():

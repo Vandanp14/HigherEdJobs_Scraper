@@ -66,6 +66,8 @@ class HigherEdJobsScraper:
         report(HEJ, f"{name}: searching")
         page, detail = await self._tabs_for(context)
         await page.goto(ADVANCED, wait_until="domcontentloaded"); await self._ensure_access(page)
+        categories = [value for value in (group.get("categories") or "").split(",") if value]
+        if categories: await page.locator("select[name=JobCat]").select_option(categories)
         keyword = page.get_by_role("textbox", name="Keyword Use quotes to search")
         await keyword.fill(group["query"]); await page.get_by_role("button", name="Search Jobs").click()
         await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page)

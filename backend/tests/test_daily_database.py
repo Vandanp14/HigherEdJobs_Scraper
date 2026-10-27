@@ -1,3 +1,4 @@
+from backend.app.config import SEARCH_GROUPS
 from backend.app.database import Database
 from backend.app.parser import JobDraft
 
@@ -9,7 +10,7 @@ def test_clear_jobs_removes_matches_and_analysis(tmp_path):
     db.clear_jobs()
     for table in ("jobs", "job_search_matches", "sponsorship_analysis", "scrape_runs"):
         assert db.connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
-    assert len(db.groups()) == 8
+    assert len(db.groups()) == len(SEARCH_GROUPS)
 
 
 def test_clear_jobs_on_fresh_database(tmp_path):

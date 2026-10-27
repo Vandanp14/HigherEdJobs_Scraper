@@ -25,6 +25,8 @@ If HigherEdJobs asks for human verification, you hear a sound and the terminal p
 
 Each job page is opened at most once: not again when another search group matches it, and not on later runs once it is saved. The "University IT Titles" group repeats the Software and Systems queries, so it is off by default; re-enable it under **Search sources** if wanted.
 
+Keyword phrases are exact on HigherEdJobs and wildcards do not work inside quotes, so each keyword group lists its word variants (for example "web developer", "web development", "front-end developer"). The "Category:" groups leave the keyword empty and search HigherEdJobs' own job categories (Web Developer, Software Engineer/Programmer, Database Administrator, Other IT). They catch listings whose text never names the role, such as a "Digital Content Specialist" filed under Web Developer. Groups are defined in `backend/app/config.py`; edits there apply on the next start and keep each group's on/off choice.
+
 The terminal prints timestamped progress: each search group and results page, every job as
 `✓` saved, `✗` failed (with the reason), or `↺` already saved, and totals
 when each source finishes.
@@ -76,7 +78,7 @@ Badges under the label: **E-Verify** (needed for STEM OPT), **Cap-exempt**, and 
 warning (often not cap-exempt). Pick several sponsorship labels at once with the Sponsorship chips;
 results stay newest first. Saved jobs are re-labelled automatically when the classifier version changes.
 
-1. Click **Run HigherEdJobs** to run every enabled keyword query, or **Run AIR Career Center** to fetch AIR directly without running HigherEdJobs searches.
+1. Click **Run HigherEdJobs** to run every enabled keyword and category group, or **Run AIR Career Center** to fetch AIR directly without running HigherEdJobs searches.
 2. Use **Search sources** to enable or disable the eight HigherEdJobs groups and run either source.
 3. Filter by source, date, search group, sponsorship signal, application status, or text.
 4. Click an evidence excerpt to show its full source context. AIR salary and application due dates are shown in the unified table.

@@ -36,4 +36,4 @@ PRs should explain behavior changes, reference relevant PRD sections or issues, 
 
 ## Scraping & Data Integrity
 
-Modify only the Keyword search field in V1. Use conservative request rates, caching, and applicable access restrictions. Preserve raw descriptions, exact classification evidence, original links, and historical records. Never interpret missing sponsorship language as guaranteed eligibility.
+Modify only the Keyword search field and the Category (`JobCat`) filter in V1. Use conservative request rates, caching, and applicable access restrictions. Preserve raw descriptions, exact classification evidence, original links, and historical records. Never interpret missing sponsorship language as guaranteed eligibility.

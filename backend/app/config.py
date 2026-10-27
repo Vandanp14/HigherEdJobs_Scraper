@@ -27,15 +27,24 @@ class Settings:
     storage_state: str | None = os.getenv("HEJ_STORAGE_STATE") or (str(ROOT / "data/browser-state.json") if (ROOT / "data/browser-state.json").exists() else None)
 
 
+# (id, name, keyword query, HigherEdJobs JobCat ids). Quoted phrases are exact on HigherEdJobs and
+# wildcards do not work inside quotes, so each group lists the word variants it should also match.
+# Category groups leave the keyword empty and use HigherEdJobs' own job categories, which catch
+# listings whose text never names the role (for example a "Digital Content Specialist" filed under
+# Web Developer).
 SEARCH_GROUPS = [
-    ("data", "Data & Analytics", '"data analyst" OR "data analytics" OR "business intelligence"'),
-    ("software", "Software Development", '"software developer" OR "application developer" OR "programmer analyst"'),
-    ("web", "Web Development", '"web developer" OR "web application" OR "full stack"'),
-    ("database", "Database", '"database administrator" OR "database analyst" OR "database developer"'),
-    ("systems", "Systems & Applications", '"systems analyst" OR "business systems analyst" OR "applications analyst"'),
-    ("cloud", "Cloud & DevOps", '"cloud engineer" OR AWS OR DevOps'),
-    ("research", "Research Computing", '"research programmer" OR "research software" OR "research computing"'),
-    ("it", "University IT Titles", '"programmer analyst" OR "applications analyst" OR "systems analyst"'),
+    ("data", "Data & Analytics", '"data analyst" OR "data analysts" OR "data analytics" OR "data analysis" OR "business intelligence" OR "BI analyst" OR "BI developer"', ""),
+    ("software", "Software Development", '"software developer" OR "software development" OR "software engineer" OR "application developer" OR "applications developer" OR "programmer analyst" OR "programmer/analyst"', ""),
+    ("web", "Web Development", '"web developer" OR "web development" OR "website developer" OR "web programmer" OR "web application" OR "web applications" OR "full stack" OR "front-end developer" OR "frontend developer" OR "front end developer"', ""),
+    ("database", "Database", '"database administrator" OR "database administration" OR "database analyst" OR "database developer" OR "database engineer"', ""),
+    ("systems", "Systems & Applications", '"systems analyst" OR "system analyst" OR "business systems analyst" OR "applications analyst" OR "application analyst"', ""),
+    ("cloud", "Cloud & DevOps", '"cloud engineer" OR "cloud engineering" OR "cloud architect" OR AWS OR Azure OR DevOps', ""),
+    ("research", "Research Computing", '"research programmer" OR "research software" OR "research computing" OR "scientific programmer"', ""),
+    ("it", "University IT Titles", '"programmer analyst" OR "applications analyst" OR "systems analyst"', ""),
+    ("cat_web", "Category: Web Developer", "", "160"),
+    ("cat_software", "Category: Software Engineer/Programmer", "", "159"),
+    ("cat_database", "Category: Database Administrator", "", "211"),
+    ("cat_other_it", "Category: Other IT", "", "162"),
 ]
 
 SPONSORSHIP_STATUSES = [
