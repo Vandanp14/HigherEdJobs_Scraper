@@ -11,6 +11,7 @@ LISTING = "https://www.higheredjobs.com/details.cfm?JobCode=1"
 
 class FakeLocator:
     async def fill(self, value): pass
+    async def select_option(self, values): pass
     async def click(self): pass
     async def count(self): return 0
     async def is_visible(self): return False
@@ -24,6 +25,7 @@ class FakePage:
         if url == LISTING: self.context.detail_loads += 1
     async def content(self): return "<p>Job</p>"
     def get_by_role(self, role, name=None): return FakeLocator()
+    def locator(self, selector): return FakeLocator()
     async def wait_for_load_state(self, state=None): pass
     async def close(self): pass
 
@@ -84,7 +86,7 @@ SLOW = "https://www.higheredjobs.com/details.cfm?JobCode=2"
 def test_detail_page_timeout_is_recorded_and_group_continues(tmp_path, monkeypatch):
     from playwright.async_api import TimeoutError as PlaywrightTimeout
 
-    monkeypatch.setattr(scraper, "parse_results", lambda html, url, now: [JobDraft(higheredjobs_url=SLOW, title="Slow job"), JobDraft(higheredjobs_url=LISTING)])
+    monkeypatch.setattr(scraper, "parse_results", lambda html, url, now: [JobDraft(higheredjobs_url=SLOW, title="Slow Software Developer"), JobDraft(higheredjobs_url=LISTING)])
     monkeypatch.setattr(scraper, "parse_job", lambda html, url, now: JobDraft(higheredjobs_url=url, normalized_description="Text"))
     original_goto = FakePage.goto
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from .classifier import VERSION, classify
 from .config import SEARCH_GROUPS
 from .parser import JobDraft, normalize_air_description, normalize_hej_description
+from .relevance import is_cs_title, is_teaching_title
 
 
 def decode_entities(text: str | None) -> str | None:
@@ -32,6 +33,8 @@ class Database:
         self.connection = sqlite3.connect(path, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
+        self.connection.create_function("cs_title", 1, is_cs_title, deterministic=True)
+        self.connection.create_function("teaching_title", 1, is_teaching_title, deterministic=True)
         self.migrate()
 
     def migrate(self):
@@ -274,7 +277,12 @@ class Database:
         self.connection.commit()
 
     def jobs(self, query: str = "", group: str = "", sponsorship: str = "", application_status: str = "", days: str = "7", sort: str = "newest", page: int = 1, per_page: int = 50, source: str = "", description: str = "", due: str = ""):
-        clauses, values = ["1=1"], []
+        # HigherEdJobs keyword matches saved before the title filter can be off-field (a chemistry
+        # faculty post that mentions "data analysis"); show only CS titles or category matches, and
+        # never teaching roles.
+        clauses, values = ["(j.source != 'higheredjobs' OR j.title IS NULL OR (NOT teaching_title(j.title) AND (cs_title(j.title) OR EXISTS ("
+                           "SELECT 1 FROM job_search_matches cm JOIN search_groups cg ON cg.id=cm.search_group_id "
+                           "WHERE cm.job_id=j.id AND cg.categories != ''))))"], []
         if source:
             clauses.append("j.source=?"); values.append(source)
         if query:

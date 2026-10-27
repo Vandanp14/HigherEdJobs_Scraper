@@ -56,7 +56,7 @@ def test_legacy_database_gets_source_columns_without_losing_identity(tmp_path):
     )
     connection.execute(
         "INSERT INTO jobs(higheredjobs_id,title,first_seen_at,last_seen_at,higheredjobs_url,created_at,updated_at) "
-        "VALUES ('123','Legacy role','2026-09-01','2026-09-01',"
+        "VALUES ('123','Legacy Software Developer','2026-09-01','2026-09-01',"
         "'https://www.higheredjobs.com/search/details.cfm?JobCode=123','2026-09-01','2026-09-01')"
     )
     connection.commit()

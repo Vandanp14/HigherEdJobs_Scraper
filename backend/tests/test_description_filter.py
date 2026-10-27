@@ -6,7 +6,7 @@ def make_draft(description: str | None, status: str | None = None) -> JobDraft:
     return JobDraft(
         higheredjobs_id="123",
         higheredjobs_url="https://www.higheredjobs.com/search/details.cfm?JobCode=123",
-        title="Test role",
+        title="Test Software Developer",
         normalized_description=description,
         description_status=status,
     )

@@ -27,6 +27,8 @@ Each job page is opened at most once: not again when another search group matche
 
 Keyword phrases are exact on HigherEdJobs and wildcards do not work inside quotes, so each keyword group lists its word variants (for example "web developer", "web development", "front-end developer"). The "Category:" groups leave the keyword empty and search HigherEdJobs' own job categories (Web Developer, Software Engineer/Programmer, Database Administrator, Other IT). They catch listings whose text never names the role, such as a "Digital Content Specialist" filed under Web Developer. Groups are defined in `backend/app/config.py`; edits there apply on the next start and keep each group's on/off choice.
 
+HigherEdJobs keyword search matches anywhere in a description, so keyword results are kept only when the title names a computer science / IT role (`backend/app/relevance.py`); a chemistry faculty post that mentions "data analysis" is skipped without opening its page. Teaching roles (professor, lecturer, instructor, faculty, adjunct, tutor) are skipped from every group, including category groups. Jobs saved before this filter stay in the database but are hidden from the dashboard. AIR listings are not filtered.
+
 The terminal prints timestamped progress: each search group and results page, every job as
 `✓` saved, `✗` failed (with the reason), or `↺` already saved, and totals
 when each source finishes.

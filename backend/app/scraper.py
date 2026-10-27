@@ -19,6 +19,7 @@ from .parser import (
     parse_results,
 )
 from .progress import elapsed, report
+from .relevance import is_cs_title, is_teaching_title
 
 HEJ = "HigherEdJobs"
 
@@ -71,7 +72,7 @@ class HigherEdJobsScraper:
         keyword = page.get_by_role("textbox", name="Keyword Use quotes to search")
         await keyword.fill(group["query"]); await page.get_by_role("button", name="Search Jobs").click()
         await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page)
-        seen=set(); discovered=new=updated=failed=skipped_old=0; page_number=1
+        seen=set(); discovered=new=updated=failed=skipped_old=off_field=0; page_number=1
         days = self.settings.max_age_days
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat() if days else None
         while True:
@@ -84,7 +85,13 @@ class HigherEdJobsScraper:
                 if listing in too_old: continue
                 key=listing.higheredjobs_url
                 if key in seen: continue
-                seen.add(key); discovered += 1
+                seen.add(key)
+                # Keyword searches match anywhere in a description, so their results must name a CS role
+                # in the title. Category results are already filed under an IT category by HigherEdJobs.
+                # Teaching roles are dropped from both.
+                if listing.title and (is_teaching_title(listing.title) or (not categories and not is_cs_title(listing.title))):
+                    off_field += 1; continue
+                discovered += 1
                 label = listing.title or key
                 if key in fetched:
                     self.database.add_match(fetched[key], group["id"])
@@ -111,6 +118,7 @@ class HigherEdJobsScraper:
                 page_number += 1
             else: break
         old_note = f", {skipped_old} older than {days} days skipped" if skipped_old else ""
+        old_note += f", {off_field} off-field or teaching titles skipped" if off_field else ""
         report(HEJ, f"{name} done: {discovered} listings, {new} new, {failed} failed{old_note}")
         return discovered,new,updated
 
