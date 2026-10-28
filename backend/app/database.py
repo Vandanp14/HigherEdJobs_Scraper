@@ -10,6 +10,8 @@ from .config import SEARCH_GROUPS
 from .parser import JobDraft, normalize_air_description, normalize_hej_description
 from .fuzzy import fuzzy_match
 from .relevance import is_cs_title, is_teaching_title
+from .seniority import VERSION as SENIORITY_VERSION
+from .seniority import flag_role
 
 
 def decode_entities(text: str | None) -> str | None:
@@ -98,6 +100,8 @@ class Database:
                 "source_job_id": "TEXT",
                 "source_url": "TEXT",
                 "application_due_date": "TEXT",
+                "seniority_flags": "TEXT NOT NULL DEFAULT '[]'",
+                "seniority_version": "TEXT",
             },
             "scrape_runs": {"source": "TEXT NOT NULL DEFAULT 'higheredjobs'"},
             "search_groups": {"categories": "TEXT NOT NULL DEFAULT ''", "trusted": "INTEGER NOT NULL DEFAULT 0"},
@@ -251,6 +255,7 @@ class Database:
             self._record_match(job_id, group_id, now)
         if draft.normalized_description:
             self._store_analysis(job_id, draft.normalized_description, draft.institution, now)
+        self._store_flags(job_id)
         self.connection.commit()
         return job_id, is_new
 
@@ -279,7 +284,7 @@ class Database:
         )
         self.connection.commit()
 
-    def jobs(self, query: str = "", group: str = "", sponsorship: str = "", application_status: str = "", days: str = "7", sort: str = "newest", page: int = 1, per_page: int = 50, source: str = "", description: str = "", due: str = ""):
+    def jobs(self, query: str = "", group: str = "", sponsorship: str = "", application_status: str = "", days: str = "7", sort: str = "newest", page: int = 1, per_page: int = 50, source: str = "", description: str = "", due: str = "", hide: str = ""):
         # HigherEdJobs keyword matches saved before the title filter can be off-field (a chemistry
         # faculty post that mentions "data analysis"); show only CS titles or trusted IT category
         # matches, and never teaching roles.
@@ -305,6 +310,10 @@ class Database:
             clauses.append("(j.normalized_description IS NULL OR TRIM(j.normalized_description) = '')")
         elif description == "failed":
             clauses.append("j.description_status='Failed' AND (j.normalized_description IS NULL OR TRIM(j.normalized_description) = '')")
+        hidden = [label for label in hide.split(",") if label]
+        if hidden:
+            clauses.append(f"NOT EXISTS (SELECT 1 FROM json_each(j.seniority_flags) sf WHERE json_extract(sf.value, '$.label') IN ({','.join('?' * len(hidden))}))")
+            values.extend(hidden)
         if application_status: clauses.append("j.application_status=?"); values.append(application_status)
         elif days != "all" and due != "all": clauses.append("j.application_status != 'Skipped'")
         if days not in ("", "all"):
@@ -320,7 +329,7 @@ class Database:
         where = " AND ".join(clauses)
         total = self.connection.execute(f"SELECT COUNT(*) FROM jobs j LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id WHERE {where}", values).fetchone()[0]
         rows = self.connection.execute(f"""SELECT j.*, COALESCE(sa.status,'Unavailable') sponsorship_status, COALESCE(sa.confidence,'-') confidence, sa.evidence, sa.evidence_context, sa.matched_terms, COALESCE(sa.signals,'[]') signals, GROUP_CONCAT(sg.name, ' | ') search_groups FROM jobs j LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id LEFT JOIN job_search_matches jm ON jm.job_id=j.id LEFT JOIN search_groups sg ON sg.id=jm.search_group_id WHERE {where} GROUP BY j.id ORDER BY {order}, j.id DESC LIMIT ? OFFSET ?""", values + [per_page, (page - 1) * per_page]).fetchall()
-        return {"items": [dict(row) | {"active":bool(row["active"]), "matched_terms":json.loads(row["matched_terms"] or "[]")} for row in rows], "total": total, "page": page, "per_page": per_page}
+        return {"items": [dict(row) | {"active":bool(row["active"]), "matched_terms":json.loads(row["matched_terms"] or "[]"), "seniority_flags":json.loads(row["seniority_flags"] or "[]")} for row in rows], "total": total, "page": page, "per_page": per_page}
 
     def update_job(self, job_id: int, values: dict):
         allowed = {"application_status", "notes"}; changes = {k:v for k,v in values.items() if k in allowed}
@@ -341,6 +350,26 @@ class Database:
             (job_id, result["status"], result["confidence"], result["evidence"], result["evidence_context"],
              json.dumps(result["matched_terms"]), result["classifier_version"], now, json.dumps(result["signals"])),
         )
+
+    def _store_flags(self, job_id: int):
+        row = self.connection.execute("SELECT title, normalized_description FROM jobs WHERE id=?", (job_id,)).fetchone()
+        flags = flag_role(row["title"], row["normalized_description"])
+        self.connection.execute(
+            "UPDATE jobs SET seniority_flags=?, seniority_version=? WHERE id=?",
+            (json.dumps(flags), SENIORITY_VERSION, job_id),
+        )
+
+    def relabel_seniority(self, only_outdated: bool = False) -> int:
+        """Label saved jobs with the current seniority rules; titles alone are enough, so jobs
+        without a description are labelled too."""
+        query = "SELECT id FROM jobs"
+        if only_outdated:
+            query += " WHERE seniority_version IS NULL OR seniority_version != ?"
+        rows = self.connection.execute(query, (SENIORITY_VERSION,) if only_outdated else ()).fetchall()
+        for row in rows:
+            self._store_flags(row["id"])
+        self.connection.commit()
+        return len(rows)
 
     def reanalyze(self, only_outdated: bool = False) -> int:
         """Re-clean each description and classify it again. raw_description is never changed; the
@@ -370,5 +399,6 @@ class Database:
                 (decode_entities(row["title"]), decode_entities(row["institution"]), row["id"]),
             )
             self._store_analysis(row["id"], text, row["institution"], now)
+            self._store_flags(row["id"])
         self.connection.commit()
         return len(rows)

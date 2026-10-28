@@ -19,6 +19,7 @@ def relabel_on_startup(db):
     A failure here must not keep the dashboard from starting."""
     try:
         db.reanalyze(only_outdated=True)
+        db.relabel_seniority(only_outdated=True)
     except Exception as error:
         print(f"Re-labelling saved jobs failed; showing existing labels: {error}", file=sys.stderr)
 
@@ -41,8 +42,8 @@ async def group_update(group_id:str, body:GroupUpdate):
     if not database.set_group_enabled(group_id,body.enabled): raise HTTPException(404,"Search group not found")
     return {"ok":True}
 @app.get("/api/jobs")
-async def jobs(query:str="", group:str="", sponsorship:str="", application_status:str="", days:str="7", sort:str="newest", page:int=1, source:str="", description:str="", due:str=""):
-    return database.jobs(query,group,sponsorship,application_status,days,sort,max(page,1),source=source,description=description,due=due)
+async def jobs(query:str="", group:str="", sponsorship:str="", application_status:str="", days:str="7", sort:str="newest", page:int=1, source:str="", description:str="", due:str="", hide:str=""):
+    return database.jobs(query,group,sponsorship,application_status,days,sort,max(page,1),source=source,description=description,due=due,hide=hide)
 @app.patch("/api/jobs/{job_id}")
 async def job_update(job_id:int, body:JobUpdate):
     if not database.update_job(job_id,body.model_dump(exclude_none=True)): raise HTTPException(404,"Job not found")
