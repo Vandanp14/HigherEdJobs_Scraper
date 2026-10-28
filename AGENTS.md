@@ -28,6 +28,13 @@ No testing framework or coverage threshold exists yet. Add deterministic tests a
 
 Cover pagination, cross-query deduplication, matched-group merging, date normalization, all five sponsorship statuses, evidence extraction, and preservation of application status across reruns. Verify failed page loads remain distinguishable from descriptions with no sponsorship mention. Document how to run the selected test suite.
 
+### API Contracts & Volume
+
+- Every API parameter that limits or splits results (`page`, `per_page`, filters) must have a frontend caller that sends it. When reviewing an endpoint or the code that calls it, check both sides of the contract, not only the diff.
+- Any screen that shows a total must let the user reach every item in that total. If `items.length < total`, the UI needs a pager or "load more".
+- Seed tests with more rows than every limit (for example, 51+ jobs for a 50-row page) and assert the user can reach the item past the limit. `backend/tests/test_dashboard_pagination.py` does this through the built dashboard in a browser. Run `npm run build` in `frontend/` first, or the browser test is skipped.
+- Before calling a dashboard change done, use it like a user: apply filters, scroll to the end, and confirm the rows match the count.
+
 ## Commit & Pull Request Guidelines
 
 No Git history is available to establish existing conventions. Use concise, imperative commit subjects, such as `Add sponsorship classifier fixtures`. Keep changes focused.

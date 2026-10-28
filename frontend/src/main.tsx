@@ -62,11 +62,15 @@ const signalClass = (signal: string) => ({
   'No Mention Found': 'signal-empty',
 }[signal] || 'signal-empty');
 
+// Matches the backend's per_page default for /api/jobs.
+const perPage = 50;
+
 function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [activeRun, setActiveRun] = useState<'higheredjobs' | 'air' | 'reanalyze' | null>(null);
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
@@ -80,7 +84,16 @@ function App() {
   const filters = boardFilters[board];
   // AIR has no posted date, so its board turns off the posted-date window.
   const parameters = useMemo(() => new URLSearchParams({ ...filters, source: board, ...(board === 'air' ? { days: '' } : {}) }).toString(), [filters, board]);
-  const update = (key: string, value: string) => setBoardFilters(current => ({ ...current, [board]: { ...current[board], [key]: value } }));
+  const update = (key: string, value: string) => {
+    setPage(1);
+    setBoardFilters(current => ({ ...current, [board]: { ...current[board], [key]: value } }));
+  };
+  const pageCount = Math.max(1, Math.ceil(total / perPage));
+  const goToPage = (next: number) => {
+    setPage(next);
+    setExpanded(null);
+    document.querySelector('.queue')?.scrollIntoView({ block: 'start' });
+  };
   const selectedGroups = filters.group ? filters.group.split(',') : [];
   const selectedSignals = filters.sponsorship ? filters.sponsorship.split(',') : [];
 
@@ -88,10 +101,15 @@ function App() {
     setLoading(true);
     try {
       const [data, sourceGroups, sourceList] = await Promise.all([
-        request('/jobs?' + parameters),
+        request(`/jobs?${parameters}&page=${page}`),
         request('/groups'),
         request('/sources'),
       ]);
+      // A status change can empty the last page; step back instead of showing nothing.
+      if (data.items.length === 0 && page > 1 && data.total > 0) {
+        setPage(Math.ceil(data.total / perPage));
+        return;
+      }
       setJobs(data.items);
       setTotal(data.total);
       setGroups(sourceGroups);
@@ -103,7 +121,7 @@ function App() {
   useEffect(() => {
     const timer = window.setTimeout(load, 180);
     return () => window.clearTimeout(timer);
-  }, [parameters]);
+  }, [parameters, page]);
   useEffect(() => {
     if (!activeRun || !runStartedAt) return undefined;
     const updateElapsed = () => setElapsedSeconds(Math.floor((Date.now() - runStartedAt) / 1000));
@@ -252,8 +270,8 @@ function App() {
         </div>
       </section>}
       <section className="queue">
-        <div className="board-tabs" role="tablist" aria-label="Job board">{([['higheredjobs', 'HigherEdJobs'], ['air', 'AIR Career Center']] as [Board, string][]).map(([id, label]) => <button key={id} role="tab" aria-selected={board === id} className={board === id ? 'selected' : ''} onClick={() => { setBoard(id); setExpanded(null); }}>{label}</button>)}</div>
-        <div className="queue-header"><div><h2>{board === 'air' ? 'AIR Career Center queue' : 'HigherEdJobs queue'}</h2><span>{loading ? 'Refreshing results…' : `${total} roles in this view`}</span></div><span className="notice">Open source wording before making a decision.</span></div>
+        <div className="board-tabs" role="tablist" aria-label="Job board">{([['higheredjobs', 'HigherEdJobs'], ['air', 'AIR Career Center']] as [Board, string][]).map(([id, label]) => <button key={id} role="tab" aria-selected={board === id} className={board === id ? 'selected' : ''} onClick={() => { setBoard(id); setPage(1); setExpanded(null); }}>{label}</button>)}</div>
+        <div className="queue-header"><div><h2>{board === 'air' ? 'AIR Career Center queue' : 'HigherEdJobs queue'}</h2><span>{loading ? 'Refreshing results…' : total > perPage ? `${total} roles in this view · showing ${(page - 1) * perPage + 1}–${Math.min(page * perPage, total)}` : `${total} roles in this view`}</span></div><span className="notice">Open source wording before making a decision.</span></div>
         <div className="toolbar">
           <label className="search"><Search size={16} /><input value={filters.query} onChange={event => update('query', event.target.value)} placeholder="Search title, institution, or location" /></label>
           <div className="filters">
@@ -270,7 +288,7 @@ function App() {
           <td className="evidence"><button aria-controls={'description-' + job.id} aria-expanded={expanded === job.id} onClick={() => setExpanded(expanded === job.id ? null : job.id)}>{job.description_status === 'Failed' ? 'Description failed' : job.evidence || (job.description_status === 'Pending' ? 'Description pending' : 'View description')}<ChevronDown size={14} /></button></td>
           <td><select className="status-select" value={job.application_status} onChange={event => updateStatus(job.id, event.target.value)}><option>New</option><option>Opened</option><option>Applied</option><option>Skipped</option></select></td>
           <td><div className="link-cell"><a onClick={() => opened(job.id)} href={job.source_url} target="_blank" rel="noreferrer">Listing <ExternalLink size={12} /></a>{job.apply_url && <a onClick={() => opened(job.id)} href={job.apply_url} target="_blank" rel="noreferrer">Apply <ExternalLink size={12} /></a>}</div></td>
-        </tr>}{expanded === job.id && <tr key={'detail-' + job.id} className="detail" id={'description-' + job.id}><td colSpan={7}><section className="context"><b>{job.description_status === 'Failed' ? 'Description unavailable' : 'Classification context'}</b><p>{job.description_status === 'Failed' ? 'The detail page could not be captured on the last run. This is not the same as no sponsorship mention.' : job.evidence_context || 'No sponsorship-specific wording was found in this listing.'}</p></section><details className="full-description"><summary>Full job description</summary><p>{job.normalized_description || 'The description has not been captured yet. Open the listing or run the source again to refresh it.'}</p></details></td></tr>}</>)}</tbody></table>{!loading && jobs.length === 0 && <div className="empty"><b>No jobs in this view.</b><span>Run a source or broaden the filters.</span></div>}</div>
+        </tr>}{expanded === job.id && <tr key={'detail-' + job.id} className="detail" id={'description-' + job.id}><td colSpan={7}><section className="context"><b>{job.description_status === 'Failed' ? 'Description unavailable' : 'Classification context'}</b><p>{job.description_status === 'Failed' ? 'The detail page could not be captured on the last run. This is not the same as no sponsorship mention.' : job.evidence_context || 'No sponsorship-specific wording was found in this listing.'}</p></section><details className="full-description"><summary>Full job description</summary><p>{job.normalized_description || 'The description has not been captured yet. Open the listing or run the source again to refresh it.'}</p></details></td></tr>}</>)}</tbody></table>{!loading && jobs.length === 0 && <div className="empty"><b>No jobs in this view.</b><span>Run a source or broaden the filters.</span></div>}{pageCount > 1 && <nav className="pager" aria-label="Results pages"><span>Page {page} of {pageCount}</span><div><button className="button secondary" disabled={page <= 1 || loading} onClick={() => goToPage(page - 1)}>Previous</button><button className="button secondary" disabled={page >= pageCount || loading} onClick={() => goToPage(page + 1)}>Next</button></div></nav>}</div>
       </section>
     </main>
   </div>;
