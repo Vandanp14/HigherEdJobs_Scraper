@@ -8,6 +8,7 @@ one page and walk every page, through the API and through the built dashboard in
 import socket
 import threading
 import time
+from contextlib import asynccontextmanager, contextmanager
 from datetime import date
 
 import pytest
@@ -61,8 +62,8 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
-@pytest.fixture
-def dashboard_url(seeded_database):
+@contextmanager
+def serve_dashboard():
     if not main.frontend.exists():
         pytest.skip("frontend/dist is missing; run `npm run build` in frontend/ first")
     port = _free_port()
@@ -81,7 +82,8 @@ def dashboard_url(seeded_database):
         thread.join(timeout=10)
 
 
-async def test_dashboard_reaches_jobs_past_the_first_page(dashboard_url):
+@asynccontextmanager
+async def browser_page():
     playwright_api = pytest.importorskip("playwright.async_api")
     async with playwright_api.async_playwright() as playwright:
         try:
@@ -89,19 +91,56 @@ async def test_dashboard_reaches_jobs_past_the_first_page(dashboard_url):
         except Exception as error:
             pytest.skip(f"Chromium is not installed for Playwright: {error}")
         try:
-            page = await browser.new_page()
-            await page.goto(dashboard_url)
-            rows = page.locator("tbody tr:not(.detail) .role strong")
-            await page.get_by_text(f"{JOB_COUNT} roles in this view").wait_for()
-            await page.wait_for_function(f"document.querySelectorAll('tbody tr:not(.detail)').length === {PER_PAGE}")
-            seen = set(await rows.all_inner_texts())
-
-            await page.get_by_role("button", name="Next").click()
-            await page.get_by_text("Page 2 of 2").wait_for()
-            await page.wait_for_function(f"document.querySelectorAll('tbody tr:not(.detail)').length === {JOB_COUNT - PER_PAGE}")
-            seen |= set(await rows.all_inner_texts())
-
-            assert len(seen) == JOB_COUNT
-            assert await page.get_by_role("button", name="Next").is_disabled()
+            yield await browser.new_page()
         finally:
             await browser.close()
+
+
+@pytest.fixture
+def dashboard_url(seeded_database):
+    with serve_dashboard() as url:
+        yield url
+
+
+async def test_dashboard_reaches_jobs_past_the_first_page(dashboard_url):
+    async with browser_page() as page:
+        await page.goto(dashboard_url)
+        rows = page.locator("tbody tr:not(.detail) .role strong")
+        await page.get_by_text(f"{JOB_COUNT} roles in this view").wait_for()
+        await page.wait_for_function(f"document.querySelectorAll('tbody tr:not(.detail)').length === {PER_PAGE}")
+        seen = set(await rows.all_inner_texts())
+
+        await page.get_by_role("button", name="Next").click()
+        await page.get_by_text("Page 2 of 2").wait_for()
+        await page.wait_for_function(f"document.querySelectorAll('tbody tr:not(.detail)').length === {JOB_COUNT - PER_PAGE}")
+        seen |= set(await rows.all_inner_texts())
+
+        assert len(seen) == JOB_COUNT
+        assert await page.get_by_role("button", name="Next").is_disabled()
+
+
+async def test_dashboard_hides_flagged_roles_until_toggled(tmp_path):
+    original = main.database
+    main.database = Database(tmp_path / "flagged.sqlite3")
+    today = date.today().isoformat()
+    for number, title in enumerate(["Software Engineer", "Director of IT"], start=1):
+        main.database.upsert(
+            JobDraft(
+                source="higheredjobs",
+                higheredjobs_url=f"https://www.higheredjobs.com/details.cfm?JobCode={700000 + number}",
+                title=title,
+                institution="Example University",
+                posted_date=today,
+                description_status="Pending",
+            )
+        )
+    try:
+        with serve_dashboard() as url:
+            async with browser_page() as page:
+                await page.goto(url)
+                await page.get_by_text("1 roles in this view").wait_for()
+                await page.get_by_role("button", name="Director", exact=True).click()
+                await page.get_by_text("2 roles in this view").wait_for()
+                await page.locator(".seniority-badge", has_text="Director").wait_for()
+    finally:
+        main.database = original

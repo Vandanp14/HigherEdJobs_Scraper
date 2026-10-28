@@ -23,15 +23,18 @@ type Job = {
   application_status: string;
   apply_url: string | null;
   description_status: string;
+  seniority_flags: { label: string; evidence: string }[];
 };
 type Group = { id: string; name: string; query: string; categories: string; enabled: boolean };
 type Source = { id: string; name: string; description: string; supports_queries: boolean; last_run?: Run | null };
 type Filters = Record<string, string>;
 type Board = 'higheredjobs' | 'air';
 // Each board keeps its own filters: HigherEdJobs is dated by posting, AIR by application due date.
+// Mirrors LABELS in backend/app/seniority.py. Roles a new-grad BS holder does not qualify for start hidden.
+const seniorityLabels = ['Director', 'Postdoc / PhD', 'Leadership', 'Senior / Lead', 'Level III+', '5+ years', "Master's required"];
 const defaultFilters: Record<Board, Filters> = {
-  higheredjobs: { query: '', group: '', sponsorship: '', description: '', application_status: '', days: '7', sort: 'newest' },
-  air: { query: '', sponsorship: '', description: '', application_status: '', due: 'upcoming', sort: 'due_soon' },
+  higheredjobs: { query: '', group: '', sponsorship: '', description: '', application_status: '', days: '7', sort: 'newest', hide: seniorityLabels.join(',') },
+  air: { query: '', sponsorship: '', description: '', application_status: '', due: 'upcoming', sort: 'due_soon', hide: seniorityLabels.join(',') },
 };
 type Run = {
   source: string;
@@ -96,6 +99,7 @@ function App() {
   };
   const selectedGroups = filters.group ? filters.group.split(',') : [];
   const selectedSignals = filters.sponsorship ? filters.sponsorship.split(',') : [];
+  const hiddenLabels = filters.hide ? filters.hide.split(',') : [];
 
   const load = async () => {
     setLoading(true);
@@ -237,6 +241,9 @@ function App() {
   const toggleSignal = (status: string) => update('sponsorship', selectedSignals.includes(status)
     ? selectedSignals.filter(item => item !== status).join(',')
     : [...selectedSignals, status].join(','));
+  const toggleHidden = (label: string) => update('hide', hiddenLabels.includes(label)
+    ? hiddenLabels.filter(item => item !== label).join(',')
+    : [...hiddenLabels, label].join(','));
   const sponsorshipLabels = [['Not Worth It', 'Not worth it'], ['Likely No Sponsorship', 'Likely no sponsorship'], ['Unsure - Review', 'Review needed'], ['No Mention Found', 'No mention found'], ['Sponsorship Possible', 'Sponsorship possible']];
   const options: [string, string[][]][] = [
     board === 'air'
@@ -279,9 +286,10 @@ function App() {
           </div>
         </div>
         <div className="query-filter"><span>Sponsorship</span><button className={selectedSignals.length ? '' : 'selected'} onClick={() => update('sponsorship', '')}>All signals</button>{sponsorshipLabels.map(([status, label]) => <button key={status} aria-pressed={selectedSignals.includes(status)} className={selectedSignals.includes(status) ? 'selected' : ''} onClick={() => toggleSignal(status)}>{label}</button>)}</div>
+        <div className="query-filter"><span>Hide roles</span><button className={hiddenLabels.length ? '' : 'selected'} onClick={() => update('hide', '')}>Show all</button>{seniorityLabels.map(label => <button key={label} aria-pressed={hiddenLabels.includes(label)} className={hiddenLabels.includes(label) ? 'selected' : ''} onClick={() => toggleHidden(label)}>{label}</button>)}</div>
         {board === 'higheredjobs' && <div className="query-filter"><span>Query filter</span><button className={selectedGroups.length ? '' : 'selected'} onClick={() => update('group', '')}>All queries</button>{groups.map(group => <button key={group.id} className={selectedGroups.includes(group.id) ? 'selected' : ''} onClick={() => toggleGroup(group.id)}>{group.name}</button>)}</div>}
         <div className="table-scroll"><table><thead><tr><th className="role-col">Role</th><th>Location · Salary</th><th>{board === 'air' ? 'Due' : 'Posted'}</th><th>Sponsorship</th><th className="evidence-col">Evidence</th><th>Progress</th><th>Links</th></tr></thead><tbody>{jobs.map(job => <>{<tr key={job.id}>
-          <td className="role"><strong>{job.title || 'Untitled listing'}</strong><span>{job.institution || 'Institution unavailable'}</span><span className="role-source"><span className={'source-badge source-' + job.source}>{job.source === 'air' ? 'AIR' : 'HigherEdJobs'}</span>{job.search_groups && <small className="source-meta">{job.search_groups}</small>}</span></td>
+          <td className="role"><strong>{job.title || 'Untitled listing'}</strong><span>{job.institution || 'Institution unavailable'}</span><span className="role-source"><span className={'source-badge source-' + job.source}>{job.source === 'air' ? 'AIR' : 'HigherEdJobs'}</span>{job.search_groups && <small className="source-meta">{job.search_groups}</small>}</span>{job.seniority_flags.length > 0 && <span className="seniority-flags">{job.seniority_flags.map(flag => <span key={flag.label} className="signal signal-caution seniority-badge" title={'Matched: ' + flag.evidence}>{flag.label}</span>)}</span>}</td>
           <td className="place"><span>{job.location || '—'}</span><small>{job.salary || 'Salary not listed'}</small></td>
           <td className="date"><small>{job.source === 'air' ? 'Due' : 'Posted'}</small><span>{(job.source === 'air' ? job.application_due_date : job.posted_date) || '—'}</span></td>
           <td><span className={'signal ' + signalClass(job.sponsorship_status)}>{job.sponsorship_status}</span><small className="confidence">{job.confidence}</small>{parseSignals(job.signals).map(signal => <span key={signal} className={'signal signal-badge ' + (signal === 'Non-college employer' || signal === 'No E-Verify' ? 'signal-caution' : 'signal-positive')}>{signal}</span>)}</td>
