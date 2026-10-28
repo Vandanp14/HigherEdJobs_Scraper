@@ -96,3 +96,75 @@ def test_flags_carry_exact_evidence_in_label_order():
 
 def test_missing_title_and_description_yield_no_flags():
     assert flag_role(None, None) == []
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "3-5 years of experience required.",
+        "Minimum of 2 to 5 years of experience.",
+        "Requires three to five (5) years of experience.",
+        "Two to five+ years of experience required.",
+        "Bachelor's degree required (or 5+ years of equivalent experience).",
+        "In lieu of a Bachelor's degree, at least nine (9) years of experience is required.",
+    ],
+)
+def test_years_rule_ignores_ranges_starting_below_five_and_degree_substitutes(description):
+    assert "5+ years" not in labels("Data Analyst", description)
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "5-7 years of experience required.",
+        "Bachelor's degree and 5 years of experience required.",
+    ],
+)
+def test_years_rule_still_flags_hard_five_year_minimums(description):
+    assert "5+ years" in labels("Data Analyst", description)
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "A master's degree in computer science may be substituted for one year of the required experience.",
+        "BA/BS plus at least two years of experience required, or master's degree.",
+        "Requires a master's degree or 2 years of experience.",
+        "In lieu of a Master's degree, 3 years of experience required.",
+    ],
+)
+def test_masters_rule_ignores_substitutes_and_alternatives(description):
+    assert "Master's required" not in labels("Data Analyst", description)
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "They would receive additional guidance from at least one PhD student.",
+        "MS and PhD students must have approval from their advisors.",
+        "Must have experience working with PhD students.",
+        "Requires a PhD plus 4 years, or BA/BS plus 6 years.",
+        "Doctorate, Master's or Bachelor's degree required.",
+    ],
+)
+def test_phd_rule_ignores_mentions_and_alternatives(description):
+    assert "Postdoc / PhD" not in labels("Data Analyst", description)
+
+
+def test_phd_rule_flags_a_required_doctorate_in_a_field():
+    assert "Postdoc / PhD" in labels("Data Analyst", "PhD in computer science or a related field required.")
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Title IV Financial Aid Analyst",
+        "Title III Grant Data Coordinator",
+        "Network Engineer I/II/III",
+        "APPLICATION ADMINISTRATOR I/II/III",
+        "BI ETL Data Developer II or III",
+        "IT Support Technician I, II, and III",
+    ],
+)
+def test_level_rule_ignores_grant_titles_and_multi_level_postings(title):
+    assert "Level III+" not in labels(title)

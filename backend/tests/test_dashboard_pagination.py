@@ -144,3 +144,41 @@ async def test_dashboard_hides_flagged_roles_until_toggled(tmp_path):
                 await page.locator(".seniority-badge", has_text="Director").wait_for()
     finally:
         main.database = original
+
+
+async def test_changing_a_filter_on_page_two_returns_to_page_one(dashboard_url):
+    async with browser_page() as page:
+        await page.goto(dashboard_url)
+        await page.get_by_role("button", name="Next").click()
+        await page.get_by_text("Page 2 of 2").wait_for()
+        await page.get_by_role("button", name="Director", exact=True).click()
+        await page.get_by_text("Page 1 of 2").wait_for()
+
+
+async def test_emptying_the_last_page_steps_back_to_a_page_with_jobs(tmp_path):
+    original = main.database
+    main.database = Database(tmp_path / "last-page.sqlite3")
+    today = date.today().isoformat()
+    for number in range(1, PER_PAGE + 2):
+        main.database.upsert(
+            JobDraft(
+                source="higheredjobs",
+                higheredjobs_url=f"https://www.higheredjobs.com/details.cfm?JobCode={600000 + number}",
+                title=f"Software Engineer {number:02d}",
+                institution="Example University",
+                posted_date=today,
+                description_status="Pending",
+            )
+        )
+    try:
+        with serve_dashboard() as url:
+            async with browser_page() as page:
+                await page.goto(url)
+                await page.get_by_role("button", name="Next").click()
+                await page.get_by_text("Page 2 of 2").wait_for()
+                await page.wait_for_function("document.querySelectorAll('tbody tr:not(.detail)').length === 1")
+                await page.locator("select.status-select").select_option("Skipped")
+                await page.get_by_text(f"{PER_PAGE} roles in this view").wait_for()
+                await page.wait_for_function(f"document.querySelectorAll('tbody tr:not(.detail)').length === {PER_PAGE}")
+    finally:
+        main.database = original

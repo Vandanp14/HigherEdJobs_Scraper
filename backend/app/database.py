@@ -312,7 +312,8 @@ class Database:
             clauses.append("j.description_status='Failed' AND (j.normalized_description IS NULL OR TRIM(j.normalized_description) = '')")
         hidden = [label for label in hide.split(",") if label]
         if hidden:
-            clauses.append(f"NOT EXISTS (SELECT 1 FROM json_each(j.seniority_flags) sf WHERE json_extract(sf.value, '$.label') IN ({','.join('?' * len(hidden))}))")
+            # Jobs the user already applied to stay visible whatever their labels.
+            clauses.append(f"(j.application_status='Applied' OR NOT EXISTS (SELECT 1 FROM json_each(j.seniority_flags) sf WHERE json_extract(sf.value, '$.label') IN ({','.join('?' * len(hidden))})))")
             values.extend(hidden)
         if application_status: clauses.append("j.application_status=?"); values.append(application_status)
         elif days != "all" and due != "all": clauses.append("j.application_status != 'Skipped'")

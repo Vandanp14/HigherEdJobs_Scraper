@@ -77,3 +77,10 @@ def test_startup_relabels_outdated_rows(database):
     main.relabel_on_startup(database)
     item = TestClient(main.app).get("/api/jobs?source=higheredjobs").json()["items"][0]
     assert [flag["label"] for flag in item["seniority_flags"]] == ["Postdoc / PhD"]
+
+
+def test_hide_never_hides_jobs_the_user_applied_to(database):
+    job_id, _ = database.upsert_job(draft(1, "Director of IT"))
+    database.update_job(job_id, {"application_status": "Applied"})
+    response = TestClient(main.app).get("/api/jobs?source=higheredjobs&application_status=Applied&hide=Director")
+    assert titles(response) == ["Director of IT"]
