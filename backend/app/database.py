@@ -8,6 +8,7 @@ from pathlib import Path
 from .classifier import VERSION, classify
 from .config import SEARCH_GROUPS
 from .parser import JobDraft, normalize_air_description, normalize_hej_description
+from .fit import load_resume, score_job, version_for
 from .fuzzy import fuzzy_match
 from .relevance import is_cs_title, is_teaching_title
 from .seniority import VERSION as SENIORITY_VERSION
@@ -31,8 +32,10 @@ def utcnow() -> str:
 
 
 class Database:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, resume_path: Path | None = None):
         path.parent.mkdir(parents=True, exist_ok=True)
+        # Without a readable resume, jobs stay unscored and only the For you tab notices.
+        self.resume = load_resume(resume_path) if resume_path else None
         self.connection = sqlite3.connect(path, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
@@ -102,6 +105,9 @@ class Database:
                 "application_due_date": "TEXT",
                 "seniority_flags": "TEXT NOT NULL DEFAULT '[]'",
                 "seniority_version": "TEXT",
+                "fit_score": "INTEGER",
+                "fit_details": "TEXT NOT NULL DEFAULT '{}'",
+                "fit_version": "TEXT",
             },
             "scrape_runs": {"source": "TEXT NOT NULL DEFAULT 'higheredjobs'"},
             "search_groups": {"categories": "TEXT NOT NULL DEFAULT ''", "trusted": "INTEGER NOT NULL DEFAULT 0"},
@@ -256,6 +262,7 @@ class Database:
         if draft.normalized_description:
             self._store_analysis(job_id, draft.normalized_description, draft.institution, now)
         self._store_flags(job_id)
+        self._store_fit(job_id)
         self.connection.commit()
         return job_id, is_new
 
@@ -401,5 +408,39 @@ class Database:
             )
             self._store_analysis(row["id"], text, row["institution"], now)
             self._store_flags(row["id"])
+            self._store_fit(row["id"])
+        self.connection.commit()
+        return len(rows)
+
+    def _store_fit(self, job_id: int):
+        """Score a HigherEdJobs job against the resume. Reads the stored sponsorship status and
+        seniority flags, so it runs after both are saved. AIR jobs are not ranked in For you."""
+        if self.resume is None:
+            return
+        row = self.connection.execute(
+            "SELECT j.source, j.title, j.normalized_description, j.seniority_flags, sa.status "
+            "FROM jobs j LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id WHERE j.id=?",
+            (job_id,),
+        ).fetchone()
+        if row["source"] != "higheredjobs":
+            return
+        result = score_job(row["title"], row["normalized_description"], row["status"],
+                           json.loads(row["seniority_flags"] or "[]"), self.resume)
+        self.connection.execute(
+            "UPDATE jobs SET fit_score=?, fit_details=?, fit_version=? WHERE id=?",
+            (result["score"], json.dumps(result), version_for(self.resume), job_id),
+        )
+
+    def rescore_fit(self, only_outdated: bool = False) -> int:
+        """Score saved HigherEdJobs jobs with the current rules and resume; editing the resume
+        changes the version, so the next startup rescores every job."""
+        if self.resume is None:
+            return 0
+        query = "SELECT id FROM jobs WHERE source='higheredjobs'"
+        if only_outdated:
+            query += " AND (fit_version IS NULL OR fit_version != ?)"
+        rows = self.connection.execute(query, (version_for(self.resume),) if only_outdated else ()).fetchall()
+        for row in rows:
+            self._store_fit(row["id"])
         self.connection.commit()
         return len(rows)

@@ -11,7 +11,7 @@ from .config import Settings
 from .database import Database
 from .scraper import AIRScraper, HigherEdJobsScraper
 
-settings=Settings(); database=Database(settings.database); app=FastAPI(title="HigherEdJobs Review")
+settings=Settings(); database=Database(settings.database, settings.resume); app=FastAPI(title="HigherEdJobs Review")
 # Runs execute inside this process, so any run still open at startup was cut off by a stop.
 database.close_interrupted_runs()
 def relabel_on_startup(db):
@@ -20,6 +20,7 @@ def relabel_on_startup(db):
     try:
         db.reanalyze(only_outdated=True)
         db.relabel_seniority(only_outdated=True)
+        db.rescore_fit(only_outdated=True)
     except Exception as error:
         print(f"Re-labelling saved jobs failed; showing existing labels: {error}", file=sys.stderr)
 
