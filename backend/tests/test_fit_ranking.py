@@ -115,3 +115,9 @@ def test_api_items_carry_fit_fields(database):
     assert item["fit_details"] == {"matched": ["Python"]}
     assert item["age_days"] == 2
     assert item["rank_value"] == pytest.approx(rank_value(80, 2), abs=0.05)
+
+
+def test_api_empty_min_fit_means_any(database):
+    seed(database, 1, 10, 0)
+    response = TestClient(main.app).get("/api/jobs?source=higheredjobs&days=all&sort=fit&min_fit=")
+    assert response.status_code == 200 and response.json()["total"] == 1
