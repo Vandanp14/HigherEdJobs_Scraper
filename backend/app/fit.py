@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from .relevance import is_cs_title
 from .skills_vocab import CASE_SENSITIVE, COMMON_SKILLS, SYNONYMS
 
 # Descriptive resume phrases ("Accessibility-compliant interface development") never appear
@@ -166,3 +167,91 @@ def asked_skills(description: str) -> dict[str, str]:
 def asked_skills_for(description: str, resume: Resume) -> dict[str, str]:
     """asked_skills, with the resume's own skills and declined skills added to the vocabulary."""
     return _asked(description, _BASE_NAMES | resume.skills | resume.declined)
+
+
+VERSION = "fit-1"
+# Weights are a starting point tuned against the user's real saved jobs; tests pin only ordering.
+_SKILLS_MAX = 70
+_LISTED_ONLY = 0.7  # a skill only listed on the resume, never used in a project or job
+_PREFERRED_WEIGHT = 0.5
+_DECLINED_PENALTY, _DECLINED_MAX = 5, 15
+_NO_KNOWN_SKILLS, _NO_DESCRIPTION = 30, 20
+_SPONSORSHIP = {
+    "Sponsorship Possible": 20, "No Mention Found": 12, "Unsure - Review": 8, "Likely No Sponsorship": 0,
+}
+_SPONSORSHIP_UNKNOWN = 10
+# An explicit denial keeps the job visible but at the bottom of any group of similar age.
+_NOT_WORTH_IT_CAP = 15
+_SENIORITY_PENALTY, _SENIORITY_MAX = 12, 36
+_CORE_ROLE = re.compile(
+    r"software|developer|programmer|engineer|\bweb|\bdata\b|analyst|database|systems?\b|cloud", re.I
+)
+
+
+def _role_points(title: str | None) -> tuple[int, str | None]:
+    if title and _CORE_ROLE.search(title):
+        return 10, "Core CS role"
+    if is_cs_title(title):
+        return 5, "Other CS role"
+    return 0, None
+
+
+def score_job(title: str | None, description: str | None, sponsorship_status: str | None,
+              seniority_flags: list[dict], resume: Resume) -> dict:
+    reasons: list[str] = []
+    matched: list[str] = []
+    missing: list[str] = []
+    declined: list[str] = []
+    required_total = required_matched = 0
+    if not (description or "").strip():
+        skills = float(_NO_DESCRIPTION)
+        reasons.append("Description not captured; skills not checked")
+    else:
+        asked = asked_skills_for(description, resume)
+        if not asked:
+            skills = float(_NO_KNOWN_SKILLS)
+            reasons.append("No listed skills recognised")
+        else:
+            possible = earned = 0.0
+            for skill, level in sorted(asked.items(), key=lambda item: (item[1] != "required", item[0])):
+                weight = 1.0 if level == "required" else _PREFERRED_WEIGHT
+                possible += weight
+                required_total += level == "required"
+                if skill in resume.skills:
+                    earned += weight * (1.0 if skill in resume.backed else _LISTED_ONLY)
+                    matched.append(skill)
+                    required_matched += level == "required"
+                elif skill in resume.declined and level == "required":
+                    declined.append(skill)
+                else:
+                    missing.append(skill)
+            skills = _SKILLS_MAX * earned / possible
+            skills -= min(_DECLINED_MAX, _DECLINED_PENALTY * len(declined))
+            if required_total:
+                reasons.append(f"{required_matched} of {required_total} required skills")
+            if declined:
+                reasons.append("Needs " + ", ".join(declined))
+    role, role_reason = _role_points(title)
+    if role_reason:
+        reasons.append(role_reason)
+    sponsorship = _SPONSORSHIP.get(sponsorship_status or "", _SPONSORSHIP_UNKNOWN)
+    if sponsorship_status:
+        reasons.append(sponsorship_status)
+    labels = [flag["label"] for flag in seniority_flags]
+    seniority = -min(_SENIORITY_MAX, _SENIORITY_PENALTY * len(labels))
+    reasons += labels
+    total = skills + role + sponsorship + seniority
+    if sponsorship_status == "Not Worth It":
+        total = min(total, _NOT_WORTH_IT_CAP)
+    return {
+        "score": int(round(max(0.0, min(100.0, total)))),
+        "matched": matched, "missing": missing, "declined": declined,
+        "required_total": required_total, "required_matched": required_matched,
+        "parts": {"skills": round(skills, 1), "role": role, "sponsorship": sponsorship, "seniority": seniority},
+        "reasons": reasons,
+    }
+
+
+def version_for(resume: Resume) -> str:
+    """Stored with each score so a rules change or a resume edit rescores saved jobs."""
+    return f"{VERSION}:{resume.digest}"
