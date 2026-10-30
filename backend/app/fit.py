@@ -19,8 +19,11 @@ from .skills_vocab import CASE_SENSITIVE, COMMON_SKILLS, SYNONYMS
 # Descriptive resume phrases ("Accessibility-compliant interface development") never appear
 # verbatim in postings, so only names this short are matched.
 _MAX_WORDS = 3
-# English words that double as skill names: they do not count at the start of a sentence ("Go to").
-_SENTENCE_START_AMBIGUOUS = frozenset({"Go", "R"})
+# English words that double as skill names: they do not count at the start of a sentence ("Go to",
+# "Excel in", "Navigate campus").
+_SENTENCE_START_AMBIGUOUS = frozenset({
+    "Go", "R", "Excel", "Navigate", "Express", "Networking", "Accessibility",
+})
 
 
 @dataclass(frozen=True)
@@ -80,7 +83,11 @@ def load_resume(path: Path) -> Resume | None:
         return None
     if not isinstance(data, dict):
         return None
-    return resume_from_dict(data, hashlib.sha256(content).hexdigest()[:12])
+    try:
+        return resume_from_dict(data, hashlib.sha256(content).hexdigest()[:12])
+    except (AttributeError, TypeError):
+        # Valid JSON in another layout (a flat skills list, a null keyword): unscored, not a crash.
+        return None
 
 
 @dataclass(frozen=True)
@@ -129,6 +136,9 @@ def _find(text: str, matcher: _Matcher) -> dict[str, int]:
             canonical = lookup[match.group(0).lower() if fold else match.group(0)]
             if canonical in _SENTENCE_START_AMBIGUOUS and _STARTS_SENTENCE.search(text[:match.start()]):
                 continue
+            # "Go-Live", "C-suite", "R-1 university": a one- or two-letter name joined by a hyphen is a word.
+            if len(match.group(0)) <= 2 and text[match.end():match.end() + 1] == "-":
+                continue
             found.setdefault(canonical, match.start())
     return found
 
@@ -169,7 +179,7 @@ def asked_skills_for(description: str, resume: Resume) -> dict[str, str]:
     return _asked(description, _BASE_NAMES | resume.skills | resume.declined)
 
 
-VERSION = "fit-2"
+VERSION = "fit-3"
 # Weights are a starting point tuned against the user's real saved jobs; tests pin only ordering.
 _SKILLS_MAX = 70
 _LISTED_ONLY = 0.7  # a skill only listed on the resume, never used in a project or job

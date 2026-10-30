@@ -73,3 +73,21 @@ def test_load_resume_digest_tracks_file_contents(tmp_path):
     path.write_text(json.dumps(RESUME | {"skill_check": {"declined": []}}))
     second = load_resume(path)
     assert first.digest != second.digest and len(first.digest) == 12
+
+
+def test_load_resume_wrong_shape_returns_none(tmp_path):
+    import json
+    for data in ({"skills": ["Python", "SQL"]}, {"skills": [{"keywords": [None]}]}, {"projects": "abc"}, {"skill_check": "x"}):
+        (tmp_path / "odd.json").write_text(json.dumps(data))
+        assert load_resume(tmp_path / "odd.json") is None
+
+
+def test_english_words_are_not_skills():
+    text = ("Work with the rest of the team. Start date: Spring 2027 semester. Provide Go-Live support "
+            "to the C-suite at an R-1 university. Excel in a fast-paced role. Navigate campus systems. "
+            "Department of Statistics.")
+    assert asked_skills(text) == {}
+
+
+def test_rest_apis_still_match():
+    assert asked_skills("Build REST APIs and RESTful services.") == {"REST APIs": "required"}

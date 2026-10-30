@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { PanelRightOpen, Search } from 'lucide-react';
 import { FitPanel } from './FitPanel';
 import { lowFit, postedLabel, whyTags } from './forYou';
-import { seniorityLabels, sponsorshipLabels, toggleItem, type Filters, type Job } from './types';
+import { seniorityLabels, sponsorshipLabels, toggleItem, type Filters, type Job, type ResumeState } from './types';
 
 type Props = {
+  resume: ResumeState | null;
   jobs: Job[];
   total: number;
   page: number;
@@ -34,7 +35,7 @@ const readPanel = () => {
 };
 const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName));
 
-export function ForYouBoard({ jobs, total, page, perPage, loading, filters, update, goToPage, onOpen, onApplied }: Props) {
+export function ForYouBoard({ resume, jobs, total, page, perPage, loading, filters, update, goToPage, onOpen, onApplied }: Props) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [panelOpen, setPanelOpenState] = useState(readPanel);
   // The first row is selected whenever the selected job leaves the page (load, page change, filter).
@@ -82,7 +83,6 @@ export function ForYouBoard({ jobs, total, page, perPage, loading, filters, upda
   const pageCount = Math.max(1, Math.ceil(total / perPage));
   const signals = filters.sponsorship ? filters.sponsorship.split(',') : [];
   const excluded = filters.hide ? filters.hide.split(',') : [];
-  const unscored = total > 0 && jobs.length > 0 && jobs.every(job => job.fit_score === null);
 
   return <>
     <div className="queue-header"><div><h2>Ranked for you</h2><span>{loading ? 'Refreshing results…' : total > perPage ? `${total} roles ranked · showing ${(page - 1) * perPage + 1}–${Math.min(page * perPage, total)}` : `${total} roles ranked`}</span></div><span className="notice">Best match to your resume first; newer jobs win close calls.</span></div>
@@ -94,7 +94,7 @@ export function ForYouBoard({ jobs, total, page, perPage, loading, filters, upda
     </div>
     <div className="query-filter"><span>Sponsorship</span><button className={signals.length ? '' : 'selected'} onClick={() => update('sponsorship', '')}>All signals</button>{sponsorshipLabels.map(([status, label]) => <button key={status} aria-pressed={signals.includes(status)} className={signals.includes(status) ? 'selected' : ''} onClick={() => update('sponsorship', toggleItem(signals, status))}>{label}</button>)}</div>
     <div className="query-filter"><span>Exclude roles</span><button className={excluded.length ? '' : 'selected'} onClick={() => update('hide', '')}>None</button>{seniorityLabels.map(label => <button key={label} aria-pressed={excluded.includes(label)} className={excluded.includes(label) ? 'selected' : ''} onClick={() => update('hide', toggleItem(excluded, label))}>{label}</button>)}</div>
-    {unscored && <p className="fit-notice" role="status">Add your resume at data/resume.json to rank jobs.</p>}
+    {resume && !resume.loaded && <p className="fit-notice" role="status">Add your resume at {resume.path ?? 'data/resume.json'} to rank jobs.</p>}
     <div className={panelOpen ? 'fit-layout' : 'fit-layout collapsed'}>
     <div className="table-scroll"><table className="fit-table"><thead><tr><th>Fit</th><th>Role</th><th>Why</th><th>Posted</th></tr></thead><tbody>{jobs.map(job => {
       const tags = whyTags(job);

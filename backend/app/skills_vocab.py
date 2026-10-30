@@ -44,14 +44,14 @@ COMMON_SKILLS: tuple[str, ...] = (
     "Visual Basic", "VBA", "COBOL", "Fortran", "SQL", "PL/SQL", "Bash", "PowerShell", "HTML", "CSS",
     # Frameworks and front end
     "React", "Angular", "Vue", "Svelte", "Next.js", "Node.js", "Express", "Django", "Flask",
-    "FastAPI", "Spring", "Spring Boot", "Laravel", "Rails", ".NET", "jQuery", "Bootstrap",
+    "FastAPI", "Spring Boot", "Laravel", "Rails", ".NET", "jQuery", "Bootstrap",
     "Tailwind CSS", "Sass", "WordPress", "Drupal", "Cascade", "TerminalFour", "OmniUpdate",
     # Data and databases
     "MySQL", "PostgreSQL", "Oracle", "Microsoft SQL Server", "SQLite", "MongoDB", "Redis",
     "Snowflake", "Databricks", "Spark", "Hadoop", "Kafka", "Airflow", "dbt", "ETL", "Tableau",
     "Power BI", "Looker", "Qlik", "Excel", "Argos", "Cognos", "Informatica", "SSIS", "SSRS",
     "pandas", "NumPy", "scikit-learn", "TensorFlow", "PyTorch", "Machine learning",
-    "Artificial intelligence", "Data visualization", "Data warehousing", "Statistics",
+    "Artificial intelligence", "Data visualization", "Data warehousing",
     # Cloud, infrastructure, DevOps
     "Amazon Web Services", "Microsoft Azure", "Google Cloud", "Docker", "Kubernetes", "Terraform",
     "Ansible", "Jenkins", "GitHub Actions", "Continuous integration", "Linux", "Windows Server",
@@ -69,5 +69,5 @@ COMMON_SKILLS: tuple[str, ...] = (
 CASE_SENSITIVE: frozenset[str] = frozenset({
     "React", "Go", "R", "C", "Swift", "Rust", "Spark", "Express", "Excel", "Spring", "Rails",
     "Oracle", "Banner", "Slate", "Workday", "Canvas", "Navigate", "Colleague", "Anthology",
-    "Cascade", "Node", "Statistics", "Networking", "Accessibility", "Looker", "Argos", "Okta",
+    "Cascade", "Node", "Networking", "Accessibility", "Looker", "Argos", "Okta", "REST",
 })

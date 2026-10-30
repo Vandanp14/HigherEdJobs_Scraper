@@ -74,7 +74,11 @@ async def test_for_you_explains_missing_resume(tmp_path):
         with serve_dashboard() as url:
             async with browser_page() as page:
                 await page.goto(url)
-                await page.get_by_text("Add your resume at data/resume.json to rank jobs.").wait_for()
+                await page.get_by_text(f"Add your resume at {tmp_path / 'missing.json'} to rank jobs.").wait_for()
+                # The notice survives a filter that leaves no rows.
+                await page.locator("select").nth(1).select_option("80")
+                await page.get_by_text("0 roles ranked").wait_for()
+                await page.get_by_text(f"Add your resume at {tmp_path / 'missing.json'} to rank jobs.").wait_for()
     finally:
         main.database = original
 

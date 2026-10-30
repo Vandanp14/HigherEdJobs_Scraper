@@ -39,6 +39,9 @@ export type Job = {
 
 export type Filters = Record<string, string>;
 
+// Whether the For you ranking has a readable resume behind it, and where it is read from.
+export type ResumeState = { loaded: boolean; path: string | null };
+
 // Mirrors LABELS in backend/app/seniority.py.
 export const seniorityLabels = ['Director', 'Postdoc / PhD', 'Leadership', 'Senior / Lead', 'Level III+', '5+ years', "Master's required"];
 export const sponsorshipLabels = [['Not Worth It', 'Not worth it'], ['Likely No Sponsorship', 'Likely no sponsorship'], ['Unsure - Review', 'Review needed'], ['No Mention Found', 'No mention found'], ['Sponsorship Possible', 'Sponsorship possible']];

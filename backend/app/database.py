@@ -39,6 +39,7 @@ class Database:
     def __init__(self, path: Path, resume_path: Path | None = None):
         path.parent.mkdir(parents=True, exist_ok=True)
         # Without a readable resume, jobs stay unscored and only the For you tab notices.
+        self.resume_path = resume_path
         self.resume = load_resume(resume_path) if resume_path else None
         self.connection = sqlite3.connect(path, check_same_thread=False)
         self.connection.row_factory = sqlite3.Row
@@ -348,7 +349,8 @@ class Database:
         where = " AND ".join(clauses)
         total = self.connection.execute(f"SELECT COUNT(*) FROM jobs j LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id WHERE {where}", values).fetchone()[0]
         rows = self.connection.execute(f"""SELECT j.*, COALESCE(sa.status,'Unavailable') sponsorship_status, COALESCE(sa.confidence,'-') confidence, sa.evidence, sa.evidence_context, sa.matched_terms, COALESCE(sa.signals,'[]') signals, {AGE_DAYS} age_days, fit_rank(j.fit_score, {AGE_DAYS}) rank_value, GROUP_CONCAT(sg.name, ' | ') search_groups FROM jobs j LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id LEFT JOIN job_search_matches jm ON jm.job_id=j.id LEFT JOIN search_groups sg ON sg.id=jm.search_group_id WHERE {where} GROUP BY j.id ORDER BY {order}, j.id DESC LIMIT ? OFFSET ?""", values + [per_page, (page - 1) * per_page]).fetchall()
-        return {"items": [dict(row) | {"active":bool(row["active"]), "matched_terms":json.loads(row["matched_terms"] or "[]"), "seniority_flags":json.loads(row["seniority_flags"] or "[]"), "fit_details":json.loads(row["fit_details"] or "{}"), "age_days":None if row["age_days"] is None else int(round(row["age_days"])), "rank_value":round(row["rank_value"], 1)} for row in rows], "total": total, "page": page, "per_page": per_page}
+        return {"items": [dict(row) | {"active":bool(row["active"]), "matched_terms":json.loads(row["matched_terms"] or "[]"), "seniority_flags":json.loads(row["seniority_flags"] or "[]"), "fit_details":json.loads(row["fit_details"] or "{}"), "age_days":None if row["age_days"] is None else int(round(row["age_days"])), "rank_value":round(row["rank_value"], 1)} for row in rows], "total": total, "page": page, "per_page": per_page,
+                "resume": {"loaded": self.resume is not None, "path": str(self.resume_path) if self.resume_path else None}}
 
     def update_job(self, job_id: int, values: dict):
         allowed = {"application_status", "notes"}; changes = {k:v for k,v in values.items() if k in allowed}
@@ -387,6 +389,8 @@ class Database:
         rows = self.connection.execute(query, (SENIORITY_VERSION,) if only_outdated else ()).fetchall()
         for row in rows:
             self._store_flags(row["id"])
+            # Fit reads the flags, so a seniority rules change rescores too.
+            self._store_fit(row["id"])
         self.connection.commit()
         return len(rows)
 
@@ -446,7 +450,13 @@ class Database:
         """Score saved HigherEdJobs jobs with the current rules and resume; editing the resume
         changes the version, so the next startup rescores every job."""
         if self.resume is None:
-            return 0
+            # A deleted or broken resume must not leave the last resume's ranking on screen.
+            cursor = self.connection.execute(
+                "UPDATE jobs SET fit_score=NULL, fit_details='{}', fit_version=NULL "
+                "WHERE fit_score IS NOT NULL OR fit_version IS NOT NULL"
+            )
+            self.connection.commit()
+            return cursor.rowcount
         query = "SELECT id FROM jobs WHERE source='higheredjobs'"
         if only_outdated:
             query += " AND (fit_version IS NULL OR fit_version != ?)"

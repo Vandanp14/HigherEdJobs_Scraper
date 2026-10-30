@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import { ForYouBoard } from './ForYouBoard';
 import { forYouDefaults } from './forYou';
-import { seniorityLabels, signalClass, sponsorshipLabels, type Filters, type Job } from './types';
+import { seniorityLabels, signalClass, sponsorshipLabels, type Filters, type Job, type ResumeState } from './types';
 
 type Group = { id: string; name: string; query: string; categories: string; enabled: boolean };
 type Source = { id: string; name: string; description: string; supports_queries: boolean; last_run?: Run | null };
@@ -46,6 +46,7 @@ function App() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [total, setTotal] = useState(0);
+  const [resume, setResume] = useState<ResumeState | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [activeRun, setActiveRun] = useState<'higheredjobs' | 'air' | 'reanalyze' | null>(null);
@@ -89,6 +90,7 @@ function App() {
       }
       setJobs(data.items);
       setTotal(data.total);
+      setResume(data.resume);
       setGroups(sourceGroups);
       setSources(sourceList);
     } finally {
@@ -250,7 +252,7 @@ function App() {
       </section>}
       <section className="queue">
         <div className="board-tabs" role="tablist" aria-label="Job board">{([['foryou', 'For you'], ['higheredjobs', 'HigherEdJobs'], ['air', 'AIR Career Center']] as [Board, string][]).map(([id, label]) => <button key={id} role="tab" aria-selected={board === id} className={board === id ? 'selected' : ''} onClick={() => { setBoard(id); setPage(1); setExpanded(null); }}>{label}</button>)}</div>
-        {board === 'foryou' ? <ForYouBoard jobs={jobs} total={total} page={page} perPage={perPage} loading={loading} filters={filters} update={update} goToPage={goToPage} onOpen={job => opened(job.id)} onApplied={job => updateStatus(job.id, 'Applied')} /> : <>
+        {board === 'foryou' ? <ForYouBoard resume={resume} jobs={jobs} total={total} page={page} perPage={perPage} loading={loading} filters={filters} update={update} goToPage={goToPage} onOpen={job => opened(job.id)} onApplied={job => updateStatus(job.id, 'Applied')} /> : <>
         <div className="queue-header"><div><h2>{board === 'air' ? 'AIR Career Center queue' : 'HigherEdJobs queue'}</h2><span>{loading ? 'Refreshing results…' : total > perPage ? `${total} roles in this view · showing ${(page - 1) * perPage + 1}–${Math.min(page * perPage, total)}` : `${total} roles in this view`}</span></div><span className="notice">Open source wording before making a decision.</span></div>
         <div className="toolbar">
           <label className="search"><Search size={16} /><input value={filters.query} onChange={event => update('query', event.target.value)} placeholder="Search title, institution, or location" /></label>

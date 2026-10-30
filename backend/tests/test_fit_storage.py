@@ -85,3 +85,28 @@ def test_startup_rescores_saved_jobs(tmp_path):
     db.connection.commit()
     main.relabel_on_startup(db)
     assert stored(db) is not None
+
+
+def test_relabel_seniority_refreshes_fit(tmp_path):
+    db = Database(tmp_path / "jobs.sqlite3", write_resume(tmp_path))
+    db.upsert(draft(1))
+    db.connection.execute("UPDATE jobs SET seniority_flags=?, fit_score=0", (json.dumps([{"label": "Director", "evidence": "x"}]),))
+    db.relabel_seniority()
+    assert stored(db) > 0 and "Director" not in json.loads(stored(db, "fit_details"))["reasons"]
+
+
+def test_missing_resume_clears_stale_scores(tmp_path):
+    path = write_resume(tmp_path)
+    db = Database(tmp_path / "jobs.sqlite3", path)
+    db.upsert(draft(1))
+    path.write_text("{broken")
+    reopened = Database(tmp_path / "jobs.sqlite3", path)
+    reopened.rescore_fit(only_outdated=True)
+    assert stored(reopened) is None and stored(reopened, "fit_version") is None
+
+
+def test_jobs_response_reports_resume_state(tmp_path):
+    loaded = Database(tmp_path / "a.sqlite3", write_resume(tmp_path)).jobs(source="higheredjobs")["resume"]
+    missing = Database(tmp_path / "b.sqlite3", tmp_path / "gone.json").jobs(source="higheredjobs")["resume"]
+    assert loaded == {"loaded": True, "path": str(tmp_path / "resume.json")}
+    assert missing == {"loaded": False, "path": str(tmp_path / "gone.json")}
