@@ -78,3 +78,10 @@ def test_score_stays_within_bounds():
 
 def test_version_includes_resume_digest():
     assert version_for(RESUME) == f"{VERSION}:{RESUME.digest}"
+
+
+def test_few_asked_skills_do_not_earn_full_points():
+    one_of_one = score(description="Python required.")
+    seven_of_seven = score_job("Software Developer", "Required: Python, SQL, JavaScript, Tableau, React.",
+                               "No Mention Found", [], RESUME)
+    assert seven_of_seven["score"] - one_of_one["score"] >= 30

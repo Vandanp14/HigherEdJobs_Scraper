@@ -169,11 +169,13 @@ def asked_skills_for(description: str, resume: Resume) -> dict[str, str]:
     return _asked(description, _BASE_NAMES | resume.skills | resume.declined)
 
 
-VERSION = "fit-1"
+VERSION = "fit-2"
 # Weights are a starting point tuned against the user's real saved jobs; tests pin only ordering.
 _SKILLS_MAX = 70
 _LISTED_ONLY = 0.7  # a skill only listed on the resume, never used in a project or job
 _PREFERRED_WEIGHT = 0.5
+# A posting that names one or two skills says little about fit: "1 of 1" must not earn full points.
+_MIN_ASKED_WEIGHT = 5.0
 _DECLINED_PENALTY, _DECLINED_MAX = 5, 15
 _NO_KNOWN_SKILLS, _NO_DESCRIPTION = 30, 20
 _SPONSORSHIP = {
@@ -225,7 +227,7 @@ def score_job(title: str | None, description: str | None, sponsorship_status: st
                     declined.append(skill)
                 else:
                     missing.append(skill)
-            skills = _SKILLS_MAX * earned / possible
+            skills = _SKILLS_MAX * earned / max(possible, _MIN_ASKED_WEIGHT)
             skills -= min(_DECLINED_MAX, _DECLINED_PENALTY * len(declined))
             if required_total:
                 reasons.append(f"{required_matched} of {required_total} required skills")
