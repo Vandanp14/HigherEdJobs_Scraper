@@ -88,6 +88,16 @@ results stay newest first. Saved jobs are re-labelled automatically when the cla
 
 The run works sequentially to be considerate of HigherEdJobs. A small run can finish in minutes; a run with roughly 150 job listings can take 8–15 minutes.
 
+### For you
+
+The **For you** tab ranks every saved HigherEdJobs job against your master resume. AIR listings are not ranked. Nothing is hidden: weak matches, senior roles, and sponsorship denials only move down and are dimmed.
+
+- Put the resume at `data/resume.json` (JSON Resume layout; an optional `skill_check.declined` list names skills you do not have). Set `HEJ_RESUME` to use another path. `data/` is git-ignored, so the resume stays on this device. Edit it and restart: every job is rescored.
+- **Fit (0–100)** comes mostly from skills: required skills count more than preferred ones, skills you have used in a project or job count more than listed ones, and required skills you declined count against the job. Sponsorship wording, seniority flags, and role type adjust it. "Not worth it" caps fit at 15. "No mention found" is never treated as a yes.
+- **Order:** within the last 14 days, the better match wins and newer jobs only break close calls. After 14 days, age takes over; jobs older than 30 days rank below every newer one. Switch **Sort** to *Fit only* to ignore age.
+- The side panel explains the selected job: required skills matched, missing skills, the sponsorship sentence, and how age moved its rank. Keys: `j`/`k` or arrows move, `Enter` opens the listing, `a` marks it applied, `Esc` collapses the panel.
+- Check the weights against your own data with `.venv/bin/python scripts/fit-report.py 40 10`, which rescores and prints the top 40 and bottom 10.
+
 ### AIR Career Center
 
 AIR is a curated, read-only source at `https://www.airweb.org/community/Career-Center/`.

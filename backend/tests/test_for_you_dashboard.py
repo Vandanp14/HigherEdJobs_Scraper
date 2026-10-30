@@ -77,3 +77,39 @@ async def test_for_you_explains_missing_resume(tmp_path):
                 await page.get_by_text("Add your resume at data/resume.json to rank jobs.").wait_for()
     finally:
         main.database = original
+
+
+async def test_for_you_panel_keyboard_and_collapse(ranked_database):
+    with serve_dashboard() as url:
+        async with browser_page() as page:
+            await page.goto(url)
+            panel = page.get_by_role("complementary", name="Fit details")
+            await panel.get_by_role("heading", name="Python SQL Developer").wait_for()
+            await panel.get_by_text("Python").first.wait_for()
+
+            second = await page.locator(".fit-table tbody tr .role strong").nth(1).inner_text()
+            await page.keyboard.press("j")
+            await panel.get_by_role("heading", name=second).wait_for()
+            await page.keyboard.press("k")
+            await panel.get_by_role("heading", name="Python SQL Developer").wait_for()
+
+            await page.keyboard.press("Escape")
+            await panel.wait_for(state="hidden")
+            await page.reload()
+            await page.get_by_text("61 roles ranked").wait_for()
+            assert not await panel.is_visible()
+
+            await page.locator(".fit-table tbody tr").nth(1).click()
+            await panel.get_by_role("heading", name=second).wait_for()
+
+
+async def test_for_you_mark_applied_from_keyboard(ranked_database):
+    with serve_dashboard() as url:
+        async with browser_page() as page:
+            await page.goto(url)
+            panel = page.get_by_role("complementary", name="Fit details")
+            await panel.get_by_role("heading", name="Python SQL Developer").wait_for()
+            await page.keyboard.press("a")
+            await panel.get_by_text("Applied", exact=True).wait_for()
+    status = ranked_database.connection.execute("SELECT application_status FROM jobs WHERE title='Python SQL Developer'").fetchone()[0]
+    assert status == "Applied"

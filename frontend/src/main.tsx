@@ -250,7 +250,7 @@ function App() {
       </section>}
       <section className="queue">
         <div className="board-tabs" role="tablist" aria-label="Job board">{([['foryou', 'For you'], ['higheredjobs', 'HigherEdJobs'], ['air', 'AIR Career Center']] as [Board, string][]).map(([id, label]) => <button key={id} role="tab" aria-selected={board === id} className={board === id ? 'selected' : ''} onClick={() => { setBoard(id); setPage(1); setExpanded(null); }}>{label}</button>)}</div>
-        {board === 'foryou' ? <ForYouBoard jobs={jobs} total={total} page={page} perPage={perPage} loading={loading} filters={filters} update={update} goToPage={goToPage} /> : <>
+        {board === 'foryou' ? <ForYouBoard jobs={jobs} total={total} page={page} perPage={perPage} loading={loading} filters={filters} update={update} goToPage={goToPage} onOpen={job => opened(job.id)} onApplied={job => updateStatus(job.id, 'Applied')} /> : <>
         <div className="queue-header"><div><h2>{board === 'air' ? 'AIR Career Center queue' : 'HigherEdJobs queue'}</h2><span>{loading ? 'Refreshing results…' : total > perPage ? `${total} roles in this view · showing ${(page - 1) * perPage + 1}–${Math.min(page * perPage, total)}` : `${total} roles in this view`}</span></div><span className="notice">Open source wording before making a decision.</span></div>
         <div className="toolbar">
           <label className="search"><Search size={16} /><input value={filters.query} onChange={event => update('query', event.target.value)} placeholder="Search title, institution, or location" /></label>
