@@ -42,3 +42,30 @@ th:nth-child(5) { width:22%; } th:nth-child(6) { width:11%; } th:nth-child(7) { 
 .board-tabs { display:flex; gap:2px; padding:10px 17px 0; border-bottom:1px solid #dbe3e5; background:#fff; }.board-tabs button { padding:8px 14px; border:0; border-bottom:2px solid transparent; background:transparent; color:#687c87; font-size:12px; font-weight:750; }.board-tabs button:hover { color:#24526a; }.board-tabs button.selected { border-bottom-color:#4a849c; color:#1f5d75; }
 .pager { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 17px; border-top:1px solid #e3e8e9; background:#fafcfc; color:#7c8b94; font-size:12px; font-variant-numeric:tabular-nums; }.pager div { display:flex; gap:8px; }.pager .button:disabled { cursor:not-allowed; }
 .role .seniority-flags { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }.role .seniority-badge { display:inline-block; margin-top:0; background:#fff2d6; color:#8a6109; font-size:10px; cursor:help; }
+/* For you: ranked table. Fit is the one bold number per row; reasons stay small. */
+.fit-table th:nth-child(1) { width:72px; } .fit-table th:nth-child(2) { width:44%; } .fit-table th:nth-child(3) { width:auto; } .fit-table th:nth-child(4) { width:130px; }
+.fit-cell b { display:block; color:#172f3d; font-size:17px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1; }
+.fit-meter { display:block; width:40px; height:4px; margin-top:6px; overflow:hidden; border-radius:2px; background:#e3eaec; }.fit-meter i { display:block; height:100%; border-radius:2px; background:#21627c; }
+.fit-tags { display:flex; flex-wrap:wrap; gap:4px; }.fit-tag { display:inline-block; padding:3px 6px; border-radius:4px; background:#eef1f2; color:#687983; font-size:10px; font-weight:750; white-space:nowrap; }.fit-match { background:#e6f5eb; color:#26734c; }.fit-gap { background:#fde9e7; color:#a23730; }.fit-flag { background:#fff2d6; color:#8a6109; }
+.fit-table tr.low-fit td { opacity:.55; }.fit-table tr.low-fit:hover td { opacity:.85; }
+.fit-notice { margin:0; padding:10px 17px; border-bottom:1px solid #dbe3e5; background:#f3f8fa; color:#45616f; font-size:12px; }
+/* For you: table with the fit panel docked right; the panel follows the selected row. */
+.fit-layout { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(300px,1fr); align-items:start; border-top:1px solid #e3e8e9; }
+.fit-layout.collapsed { grid-template-columns:minmax(0,1fr) 44px; }
+.fit-table tbody tr { cursor:pointer; }.fit-table tbody tr.selected td { background:#eef5f7; }.fit-table tbody tr.selected td:first-child { box-shadow:inset 3px 0 0 #21627c; }
+.fit-panel { position:sticky; top:12px; display:grid; gap:10px; align-content:start; margin:12px; padding:16px; border:1px solid #d5dfe3; border-radius:8px; background:#fff; box-shadow:0 8px 22px rgba(41,69,82,.06); }
+.fit-panel-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding-right:40px; }.fit-panel-head h3 { margin:0; color:#172f3d; font-size:15px; line-height:1.3; text-wrap:balance; }.fit-panel-head span { display:block; margin-top:4px; color:#7d8b93; font-size:11px; text-wrap:pretty; }
+.fit-panel-score { color:#172f3d; font-size:34px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; letter-spacing:-.03em; }
+.fit-panel-collapse,.fit-panel-expand { display:grid; width:32px; height:32px; place-items:center; border:1px solid #d5dfe3; border-radius:6px; background:#fff; color:#607580; transition-property:background-color,color; transition-duration:150ms; }.fit-panel-collapse:hover,.fit-panel-expand:hover { background:#f2f6f7; color:#21627c; }
+/* overflow:clip keeps the rounded corners without making .queue a scroll box, so the panel can stick. */
+.queue:has(.fit-layout) { overflow:clip; }
+.fit-panel-collapse { position:absolute; top:12px; right:12px; }.fit-panel-expand { position:sticky; top:12px; margin:12px 6px; }
+.fit-parts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }.fit-parts>div { display:grid; gap:4px; align-content:start; padding:8px 9px; border-radius:6px; background:#f3f7f8; }.fit-parts b { color:#243f4d; font-size:13px; font-variant-numeric:tabular-nums; }.fit-parts span:last-child { color:#7d8b93; font-size:10px; }.fit-parts .signal { max-width:none; width:fit-content; }
+.fit-panel h4 { margin:4px 0 0; color:#607580; font-size:11px; font-weight:750; }
+.fit-age { margin:0; color:#526671; font-size:11px; font-variant-numeric:tabular-nums; }
+.fit-none { color:#8a989f; font-size:11px; }
+.fit-evidence { margin:0; padding:8px 10px; border-left:3px solid #9fc6d4; border-radius:0 4px 4px 0; background:#f3f8fa; color:#3f5764; font-size:12px; line-height:1.5; text-wrap:pretty; }
+.fit-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:4px; }.fit-actions a.button { text-decoration:none; }.fit-status { padding:6px 9px; font-size:11px; }
+.fit-keys { margin:2px 0 0; color:#8a989f; font-size:10px; }.fit-keys kbd { padding:0 4px; border:1px solid #d5dfe3; border-radius:3px; background:#f6f8f9; color:#526671; font:inherit; font-size:10px; }
+.fit-panel-empty { color:#7d8b93; font-size:12px; }
+@media (max-width:900px) { .fit-layout,.fit-layout.collapsed { grid-template-columns:1fr; }.fit-panel { position:relative; top:auto; }.fit-panel-expand { position:static; justify-self:end; } }

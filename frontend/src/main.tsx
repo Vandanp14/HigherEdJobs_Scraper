@@ -2,37 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ExternalLink, LoaderCircle, Play, RefreshCw, Search, Settings2 } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
+import { ForYouBoard } from './ForYouBoard';
+import { forYouDefaults } from './forYou';
+import { seniorityLabels, signalClass, sponsorshipLabels, type Filters, type Job, type ResumeState } from './types';
 
-type Job = {
-  id: number;
-  source: string;
-  source_url: string;
-  title: string | null;
-  institution: string | null;
-  location: string | null;
-  salary: string | null;
-  posted_date: string | null;
-  application_due_date: string | null;
-  search_groups: string | null;
-  sponsorship_status: string;
-  confidence: string;
-  signals: string;
-  evidence: string | null;
-  evidence_context: string | null;
-  normalized_description: string | null;
-  application_status: string;
-  apply_url: string | null;
-  description_status: string;
-  seniority_flags: { label: string; evidence: string }[];
-};
 type Group = { id: string; name: string; query: string; categories: string; enabled: boolean };
 type Source = { id: string; name: string; description: string; supports_queries: boolean; last_run?: Run | null };
-type Filters = Record<string, string>;
-type Board = 'higheredjobs' | 'air';
+type Board = 'foryou' | 'higheredjobs' | 'air';
 // Each board keeps its own filters: HigherEdJobs is dated by posting, AIR by application due date.
-// Mirrors LABELS in backend/app/seniority.py. Roles a new-grad BS holder does not qualify for start hidden.
-const seniorityLabels = ['Director', 'Postdoc / PhD', 'Leadership', 'Senior / Lead', 'Level III+', '5+ years', "Master's required"];
+// Roles a new-grad BS holder does not qualify for start hidden on the source boards; For you hides nothing.
 const defaultFilters: Record<Board, Filters> = {
+  foryou: forYouDefaults,
   higheredjobs: { query: '', group: '', sponsorship: '', description: '', application_status: '', days: '7', sort: 'newest', hide: seniorityLabels.join(',') },
   air: { query: '', sponsorship: '', description: '', application_status: '', due: 'upcoming', sort: 'due_soon', hide: seniorityLabels.join(',') },
 };
@@ -57,13 +37,6 @@ const parseSignals = (value: string | undefined): string[] => {
     return [];
   }
 };
-const signalClass = (signal: string) => ({
-  'Not Worth It': 'signal-stop',
-  'Likely No Sponsorship': 'signal-caution',
-  'Unsure - Review': 'signal-review',
-  'Sponsorship Possible': 'signal-positive',
-  'No Mention Found': 'signal-empty',
-}[signal] || 'signal-empty');
 
 // Matches the backend's per_page default for /api/jobs.
 const perPage = 50;
@@ -73,6 +46,7 @@ function App() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [total, setTotal] = useState(0);
+  const [resume, setResume] = useState<ResumeState | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [activeRun, setActiveRun] = useState<'higheredjobs' | 'air' | 'reanalyze' | null>(null);
@@ -82,11 +56,11 @@ function App() {
   const [showSources, setShowSources] = useState(false);
   const [notice, setNotice] = useState('');
   const [externalRun, setExternalRun] = useState(false);
-  const [board, setBoard] = useState<Board>('higheredjobs');
+  const [board, setBoard] = useState<Board>('foryou');
   const [boardFilters, setBoardFilters] = useState(defaultFilters);
   const filters = boardFilters[board];
   // AIR has no posted date, so its board turns off the posted-date window.
-  const parameters = useMemo(() => new URLSearchParams({ ...filters, source: board, ...(board === 'air' ? { days: '' } : {}) }).toString(), [filters, board]);
+  const parameters = useMemo(() => new URLSearchParams({ ...filters, source: board === 'foryou' ? 'higheredjobs' : board, ...(board === 'air' ? { days: '' } : {}) }).toString(), [filters, board]);
   const update = (key: string, value: string) => {
     setPage(1);
     setBoardFilters(current => ({ ...current, [board]: { ...current[board], [key]: value } }));
@@ -116,6 +90,7 @@ function App() {
       }
       setJobs(data.items);
       setTotal(data.total);
+      setResume(data.resume);
       setGroups(sourceGroups);
       setSources(sourceList);
     } finally {
@@ -244,7 +219,6 @@ function App() {
   const toggleHidden = (label: string) => update('hide', hiddenLabels.includes(label)
     ? hiddenLabels.filter(item => item !== label).join(',')
     : [...hiddenLabels, label].join(','));
-  const sponsorshipLabels = [['Not Worth It', 'Not worth it'], ['Likely No Sponsorship', 'Likely no sponsorship'], ['Unsure - Review', 'Review needed'], ['No Mention Found', 'No mention found'], ['Sponsorship Possible', 'Sponsorship possible']];
   const options: [string, string[][]][] = [
     board === 'air'
       ? ['due', [['upcoming', 'Not expired'], ['7', 'Due in 7 days'], ['14', 'Due in 14 days'], ['30', 'Due in 30 days'], ['expired', 'Expired'], ['all', 'All dates']]]
@@ -277,7 +251,8 @@ function App() {
         </div>
       </section>}
       <section className="queue">
-        <div className="board-tabs" role="tablist" aria-label="Job board">{([['higheredjobs', 'HigherEdJobs'], ['air', 'AIR Career Center']] as [Board, string][]).map(([id, label]) => <button key={id} role="tab" aria-selected={board === id} className={board === id ? 'selected' : ''} onClick={() => { setBoard(id); setPage(1); setExpanded(null); }}>{label}</button>)}</div>
+        <div className="board-tabs" role="tablist" aria-label="Job board">{([['foryou', 'For you'], ['higheredjobs', 'HigherEdJobs'], ['air', 'AIR Career Center']] as [Board, string][]).map(([id, label]) => <button key={id} role="tab" aria-selected={board === id} className={board === id ? 'selected' : ''} onClick={() => { setBoard(id); setPage(1); setExpanded(null); }}>{label}</button>)}</div>
+        {board === 'foryou' ? <ForYouBoard resume={resume} jobs={jobs} total={total} page={page} perPage={perPage} loading={loading} filters={filters} update={update} goToPage={goToPage} onOpen={job => opened(job.id)} onApplied={job => updateStatus(job.id, 'Applied')} /> : <>
         <div className="queue-header"><div><h2>{board === 'air' ? 'AIR Career Center queue' : 'HigherEdJobs queue'}</h2><span>{loading ? 'Refreshing results…' : total > perPage ? `${total} roles in this view · showing ${(page - 1) * perPage + 1}–${Math.min(page * perPage, total)}` : `${total} roles in this view`}</span></div><span className="notice">Open source wording before making a decision.</span></div>
         <div className="toolbar">
           <label className="search"><Search size={16} /><input value={filters.query} onChange={event => update('query', event.target.value)} placeholder="Search title, institution, or location" /></label>
@@ -297,6 +272,7 @@ function App() {
           <td><select className="status-select" value={job.application_status} onChange={event => updateStatus(job.id, event.target.value)}><option>New</option><option>Opened</option><option>Applied</option><option>Skipped</option></select></td>
           <td><div className="link-cell"><a onClick={() => opened(job.id)} href={job.source_url} target="_blank" rel="noreferrer">Listing <ExternalLink size={12} /></a>{job.apply_url && <a onClick={() => opened(job.id)} href={job.apply_url} target="_blank" rel="noreferrer">Apply <ExternalLink size={12} /></a>}</div></td>
         </tr>}{expanded === job.id && <tr key={'detail-' + job.id} className="detail" id={'description-' + job.id}><td colSpan={7}><section className="context"><b>{job.description_status === 'Failed' ? 'Description unavailable' : 'Classification context'}</b><p>{job.description_status === 'Failed' ? 'The detail page could not be captured on the last run. This is not the same as no sponsorship mention.' : job.evidence_context || 'No sponsorship-specific wording was found in this listing.'}</p></section><details className="full-description"><summary>Full job description</summary><p>{job.normalized_description || 'The description has not been captured yet. Open the listing or run the source again to refresh it.'}</p></details></td></tr>}</>)}</tbody></table>{!loading && jobs.length === 0 && <div className="empty"><b>No jobs in this view.</b><span>Run a source or broaden the filters.</span></div>}{pageCount > 1 && <nav className="pager" aria-label="Results pages"><span>Page {page} of {pageCount}</span><div><button className="button secondary" disabled={page <= 1 || loading} onClick={() => goToPage(page - 1)}>Previous</button><button className="button secondary" disabled={page >= pageCount || loading} onClick={() => goToPage(page + 1)}>Next</button></div></nav>}</div>
+        </>}
       </section>
     </main>
   </div>;

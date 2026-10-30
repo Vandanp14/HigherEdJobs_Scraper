@@ -96,6 +96,12 @@ async def browser_page():
             await browser.close()
 
 
+async def open_higheredjobs(page, url: str):
+    """For you is the default tab; these tests exercise the HigherEdJobs board."""
+    await page.goto(url)
+    await page.get_by_role("tab", name="HigherEdJobs").click()
+
+
 @pytest.fixture
 def dashboard_url(seeded_database):
     with serve_dashboard() as url:
@@ -104,7 +110,7 @@ def dashboard_url(seeded_database):
 
 async def test_dashboard_reaches_jobs_past_the_first_page(dashboard_url):
     async with browser_page() as page:
-        await page.goto(dashboard_url)
+        await open_higheredjobs(page, dashboard_url)
         rows = page.locator("tbody tr:not(.detail) .role strong")
         await page.get_by_text(f"{JOB_COUNT} roles in this view").wait_for()
         await page.wait_for_function(f"document.querySelectorAll('tbody tr:not(.detail)').length === {PER_PAGE}")
@@ -137,7 +143,7 @@ async def test_dashboard_hides_flagged_roles_until_toggled(tmp_path):
     try:
         with serve_dashboard() as url:
             async with browser_page() as page:
-                await page.goto(url)
+                await open_higheredjobs(page, url)
                 await page.get_by_text("1 roles in this view").wait_for()
                 await page.get_by_role("button", name="Director", exact=True).click()
                 await page.get_by_text("2 roles in this view").wait_for()
@@ -148,7 +154,7 @@ async def test_dashboard_hides_flagged_roles_until_toggled(tmp_path):
 
 async def test_changing_a_filter_on_page_two_returns_to_page_one(dashboard_url):
     async with browser_page() as page:
-        await page.goto(dashboard_url)
+        await open_higheredjobs(page, dashboard_url)
         await page.get_by_role("button", name="Next").click()
         await page.get_by_text("Page 2 of 2").wait_for()
         await page.get_by_role("button", name="Director", exact=True).click()
@@ -173,7 +179,7 @@ async def test_emptying_the_last_page_steps_back_to_a_page_with_jobs(tmp_path):
     try:
         with serve_dashboard() as url:
             async with browser_page() as page:
-                await page.goto(url)
+                await open_higheredjobs(page, url)
                 await page.get_by_role("button", name="Next").click()
                 await page.get_by_text("Page 2 of 2").wait_for()
                 await page.wait_for_function("document.querySelectorAll('tbody tr:not(.detail)').length === 1")

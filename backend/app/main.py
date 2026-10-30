@@ -11,7 +11,7 @@ from .config import Settings
 from .database import Database
 from .scraper import AIRScraper, HigherEdJobsScraper
 
-settings=Settings(); database=Database(settings.database); app=FastAPI(title="HigherEdJobs Review")
+settings=Settings(); database=Database(settings.database, settings.resume); app=FastAPI(title="HigherEdJobs Review")
 # Runs execute inside this process, so any run still open at startup was cut off by a stop.
 database.close_interrupted_runs()
 def relabel_on_startup(db):
@@ -20,6 +20,7 @@ def relabel_on_startup(db):
     try:
         db.reanalyze(only_outdated=True)
         db.relabel_seniority(only_outdated=True)
+        db.rescore_fit(only_outdated=True)
     except Exception as error:
         print(f"Re-labelling saved jobs failed; showing existing labels: {error}", file=sys.stderr)
 
@@ -42,8 +43,8 @@ async def group_update(group_id:str, body:GroupUpdate):
     if not database.set_group_enabled(group_id,body.enabled): raise HTTPException(404,"Search group not found")
     return {"ok":True}
 @app.get("/api/jobs")
-async def jobs(query:str="", group:str="", sponsorship:str="", application_status:str="", days:str="7", sort:str="newest", page:int=1, source:str="", description:str="", due:str="", hide:str=""):
-    return database.jobs(query,group,sponsorship,application_status,days,sort,max(page,1),source=source,description=description,due=due,hide=hide)
+async def jobs(query:str="", group:str="", sponsorship:str="", application_status:str="", days:str="7", sort:str="newest", page:int=1, source:str="", description:str="", due:str="", hide:str="", min_fit:str=""):
+    return database.jobs(query,group,sponsorship,application_status,days,sort,max(page,1),source=source,description=description,due=due,hide=hide,min_fit=int(min_fit) if min_fit.isdigit() else None)
 @app.patch("/api/jobs/{job_id}")
 async def job_update(job_id:int, body:JobUpdate):
     if not database.update_job(job_id,body.model_dump(exclude_none=True)): raise HTTPException(404,"Job not found")

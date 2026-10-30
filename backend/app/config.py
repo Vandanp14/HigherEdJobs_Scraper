@@ -22,6 +22,8 @@ class Settings:
     # HigherEdJobs listings posted longer ago than this are skipped, and a search stops paging once a
     # whole results page is older. 0 means no limit.
     max_age_days: int = max(0, int(os.getenv("HEJ_MAX_AGE_DAYS", "14")))
+    # Master resume (JSON Resume layout) that For you ranks jobs against. It stays on this device.
+    resume: Path = ROOT / os.getenv("HEJ_RESUME", "data/resume.json")
     state_path: Path = ROOT / "data/browser-state.json"
     verification_timeout_s: float = float(os.getenv("HEJ_VERIFICATION_TIMEOUT", "300"))
     storage_state: str | None = os.getenv("HEJ_STORAGE_STATE") or (str(ROOT / "data/browser-state.json") if (ROOT / "data/browser-state.json").exists() else None)
