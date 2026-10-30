@@ -8,7 +8,7 @@ from pathlib import Path
 from .classifier import VERSION, classify
 from .config import SEARCH_GROUPS
 from .parser import JobDraft, normalize_air_description, normalize_hej_description
-from .fit import load_resume, score_job, version_for
+from .fit import load_resume, rank_value, score_job, version_for
 from .fuzzy import fuzzy_match
 from .relevance import is_cs_title, is_teaching_title
 from .seniority import VERSION as SENIORITY_VERSION
@@ -27,6 +27,10 @@ def decode_entities(text: str | None) -> str | None:
     return text
 
 
+# Days since posting, falling back to first sighting like the "newest" sort does.
+AGE_DAYS = "(julianday(date('now','localtime')) - julianday(COALESCE(j.posted_date, substr(j.first_seen_at,1,10))))"
+
+
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -42,6 +46,7 @@ class Database:
         self.connection.create_function("cs_title", 1, is_cs_title, deterministic=True)
         self.connection.create_function("teaching_title", 1, is_teaching_title, deterministic=True)
         self.connection.create_function("fuzzy_match", 4, fuzzy_match, deterministic=True)
+        self.connection.create_function("fit_rank", 2, rank_value, deterministic=True)
         self.migrate()
 
     def migrate(self):
@@ -291,7 +296,7 @@ class Database:
         )
         self.connection.commit()
 
-    def jobs(self, query: str = "", group: str = "", sponsorship: str = "", application_status: str = "", days: str = "7", sort: str = "newest", page: int = 1, per_page: int = 50, source: str = "", description: str = "", due: str = "", hide: str = ""):
+    def jobs(self, query: str = "", group: str = "", sponsorship: str = "", application_status: str = "", days: str = "7", sort: str = "newest", page: int = 1, per_page: int = 50, source: str = "", description: str = "", due: str = "", hide: str = "", min_fit: int | None = None):
         # HigherEdJobs keyword matches saved before the title filter can be off-field (a chemistry
         # faculty post that mentions "data analysis"); show only CS titles or trusted IT category
         # matches, and never teaching roles.
@@ -322,7 +327,13 @@ class Database:
             # Jobs the user already applied to stay visible whatever their labels.
             clauses.append(f"(j.application_status='Applied' OR NOT EXISTS (SELECT 1 FROM json_each(j.seniority_flags) sf WHERE json_extract(sf.value, '$.label') IN ({','.join('?' * len(hidden))})))")
             values.extend(hidden)
-        if application_status: clauses.append("j.application_status=?"); values.append(application_status)
+        if min_fit is not None:
+            clauses.append("j.fit_score >= ?"); values.append(min_fit)
+        # "open" and "unapplied" are For you views; "any" includes Skipped whatever the date window.
+        if application_status == "open": clauses.append("j.application_status != 'Skipped'")
+        elif application_status == "unapplied": clauses.append("j.application_status NOT IN ('Applied','Skipped')")
+        elif application_status == "any": pass
+        elif application_status: clauses.append("j.application_status=?"); values.append(application_status)
         elif days != "all" and due != "all": clauses.append("j.application_status != 'Skipped'")
         if days not in ("", "all"):
             clauses.append("(j.source='air' OR j.posted_date >= date('now', ?))"); values.append(f"-{int(days)} days")
@@ -333,11 +344,11 @@ class Database:
             clauses.append("j.application_due_date < date('now', 'localtime')")
         elif due.isdigit():
             clauses.append("j.application_due_date BETWEEN date('now', 'localtime') AND date('now', 'localtime', ?)"); values.append(f"+{int(due)} days")
-        order = {"oldest":"COALESCE(j.posted_date, substr(j.first_seen_at,1,10)) ASC", "first_seen":"j.first_seen_at DESC", "institution":"j.institution COLLATE NOCASE", "title":"j.title COLLATE NOCASE", "state":"j.state COLLATE NOCASE", "due_soon":"j.application_due_date IS NULL, j.application_due_date ASC", "due_late":"j.application_due_date IS NULL, j.application_due_date DESC"}.get(sort, "COALESCE(j.posted_date, substr(j.first_seen_at,1,10)) DESC")
+        order = {"oldest":"COALESCE(j.posted_date, substr(j.first_seen_at,1,10)) ASC", "first_seen":"j.first_seen_at DESC", "institution":"j.institution COLLATE NOCASE", "title":"j.title COLLATE NOCASE", "state":"j.state COLLATE NOCASE", "due_soon":"j.application_due_date IS NULL, j.application_due_date ASC", "due_late":"j.application_due_date IS NULL, j.application_due_date DESC", "fit":f"fit_rank(j.fit_score, {AGE_DAYS}) DESC", "fit_only":"j.fit_score IS NULL, j.fit_score DESC"}.get(sort, "COALESCE(j.posted_date, substr(j.first_seen_at,1,10)) DESC")
         where = " AND ".join(clauses)
         total = self.connection.execute(f"SELECT COUNT(*) FROM jobs j LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id WHERE {where}", values).fetchone()[0]
-        rows = self.connection.execute(f"""SELECT j.*, COALESCE(sa.status,'Unavailable') sponsorship_status, COALESCE(sa.confidence,'-') confidence, sa.evidence, sa.evidence_context, sa.matched_terms, COALESCE(sa.signals,'[]') signals, GROUP_CONCAT(sg.name, ' | ') search_groups FROM jobs j LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id LEFT JOIN job_search_matches jm ON jm.job_id=j.id LEFT JOIN search_groups sg ON sg.id=jm.search_group_id WHERE {where} GROUP BY j.id ORDER BY {order}, j.id DESC LIMIT ? OFFSET ?""", values + [per_page, (page - 1) * per_page]).fetchall()
-        return {"items": [dict(row) | {"active":bool(row["active"]), "matched_terms":json.loads(row["matched_terms"] or "[]"), "seniority_flags":json.loads(row["seniority_flags"] or "[]")} for row in rows], "total": total, "page": page, "per_page": per_page}
+        rows = self.connection.execute(f"""SELECT j.*, COALESCE(sa.status,'Unavailable') sponsorship_status, COALESCE(sa.confidence,'-') confidence, sa.evidence, sa.evidence_context, sa.matched_terms, COALESCE(sa.signals,'[]') signals, {AGE_DAYS} age_days, fit_rank(j.fit_score, {AGE_DAYS}) rank_value, GROUP_CONCAT(sg.name, ' | ') search_groups FROM jobs j LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id LEFT JOIN job_search_matches jm ON jm.job_id=j.id LEFT JOIN search_groups sg ON sg.id=jm.search_group_id WHERE {where} GROUP BY j.id ORDER BY {order}, j.id DESC LIMIT ? OFFSET ?""", values + [per_page, (page - 1) * per_page]).fetchall()
+        return {"items": [dict(row) | {"active":bool(row["active"]), "matched_terms":json.loads(row["matched_terms"] or "[]"), "seniority_flags":json.loads(row["seniority_flags"] or "[]"), "fit_details":json.loads(row["fit_details"] or "{}"), "age_days":None if row["age_days"] is None else int(round(row["age_days"])), "rank_value":round(row["rank_value"], 1)} for row in rows], "total": total, "page": page, "per_page": per_page}
 
     def update_job(self, job_id: int, values: dict):
         allowed = {"application_status", "notes"}; changes = {k:v for k,v in values.items() if k in allowed}

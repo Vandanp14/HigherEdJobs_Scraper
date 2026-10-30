@@ -255,3 +255,15 @@ def score_job(title: str | None, description: str | None, sponsorship_status: st
 def version_for(resume: Resume) -> str:
     """Stored with each score so a rules change or a resume edit rescores saved jobs."""
     return f"{VERSION}:{resume.digest}"
+
+
+def rank_value(score: int | None, age_days: float | None) -> float:
+    """For you ordering: inside 14 days fit decides and newer only wins near-ties; after that age
+    takes charge; jobs older than 30 days sit below every job from the last 30 days."""
+    if score is None:
+        return -10_000.0
+    if age_days is None or age_days > 30:
+        return score / 100 - 1000
+    if age_days <= 14:
+        return score - 0.2 * age_days
+    return score - 2.8 - 3 * (age_days - 14)
