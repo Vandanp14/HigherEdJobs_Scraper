@@ -262,3 +262,18 @@ def test_old_listings_are_skipped_and_paging_stops_once_a_page_is_all_old(tmp_pa
     assert saved == {"https://h/recent", "https://h/undated"}
     assert len(clicks) == 1
     assert "older than 14 days" in capsys.readouterr().out
+
+
+def test_run_result_is_for_its_own_source(tmp_path, monkeypatch):
+    # A fresh run runs both scrapers at once; the other source's newer run must not be returned.
+    monkeypatch.setattr(FakeContext, "close", lambda self: _value(None), raising=False)
+    database = Database(tmp_path / "jobs.sqlite3")
+    monkeypatch.setattr(scraper, "async_playwright", lambda: FakePlaywright(FakeContext()))
+
+    def parse_and_start_other_run(html, url, now):
+        database.start_run([], source="higheredjobs")
+        return []
+
+    monkeypatch.setattr(scraper, "parse_air_results", parse_and_start_other_run)
+    result = asyncio.run(scraper.AIRScraper(database, replace(Settings(), request_delay=0, headless=True)).run())
+    assert result["source"] == "air"

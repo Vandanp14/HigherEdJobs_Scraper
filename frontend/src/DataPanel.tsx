@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { request } from './api';
-import type { DataSource } from './types';
+import type { DataSource, StorageUse } from './types';
 
 type Pending = { kind: 'delete'; source: DataSource } | { kind: 'clear' } | { kind: 'fresh' };
 type Props = {
@@ -19,8 +19,27 @@ const including = (applied: number, withNotes: number) => {
   return parts.length ? `, including ${parts.join(' and ')}` : '';
 };
 
+export const formatBytes = (bytes: number | null | undefined) => {
+  if (bytes === null || bytes === undefined) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
+  return `${value.toFixed(1)} ${units[unit]}`;
+};
+// " Storage 1.2 MB → 1.3 MB." for run notices; empty when the run has no both readings.
+export const storageChange = (run: { db_bytes_before?: number | null; db_bytes_after?: number | null }) =>
+  run.db_bytes_before == null || run.db_bytes_after == null
+    ? ''
+    : ` Storage ${formatBytes(run.db_bytes_before)} → ${formatBytes(run.db_bytes_after)}.`;
+
+type LastRuns = Record<string, { db_bytes_before?: number | null; db_bytes_after?: number | null } | null | undefined>;
+
 export function DataPanel({ busy, onClose, onChanged, onFreshRun }: Props) {
   const [sources, setSources] = useState<DataSource[] | null>(null);
+  const [storage, setStorage] = useState<StorageUse | null>(null);
+  const [lastRuns, setLastRuns] = useState<LastRuns>({});
   const [pending, setPending] = useState<Pending | null>(null);
   const [working, setWorking] = useState(false);
   // A failed load must not look like an empty database.
@@ -28,7 +47,14 @@ export function DataPanel({ busy, onClose, onChanged, onFreshRun }: Props) {
 
   const refresh = async () => {
     try {
-      setSources(await request('/data/sources'));
+      const [rows, use, boards] = await Promise.all([
+        request('/data/sources') as Promise<DataSource[]>,
+        request('/data/storage') as Promise<StorageUse>,
+        request('/sources') as Promise<{ id: string; last_run?: LastRuns[string] }[]>,
+      ]);
+      setSources(rows);
+      setStorage(use);
+      setLastRuns(Object.fromEntries(boards.map(board => [board.id, board.last_run])));
       setLoadError('');
     } catch (error) {
       setLoadError((error as Error).message);
@@ -83,9 +109,10 @@ export function DataPanel({ busy, onClose, onChanged, onFreshRun }: Props) {
       : <ul className="data-list">{sources.map(row => <li key={row.source} className="data-row">
         <b>{row.name}</b>
         <span>{jobWord(row.jobs)}</span>
-        <small>{row.applied} Applied · {row.with_notes} with notes</small>
+        <small>{row.applied} Applied · {row.with_notes} with notes{lastRuns[row.source]?.db_bytes_after != null && <> · Last run {formatBytes(lastRuns[row.source]?.db_bytes_before)} → {formatBytes(lastRuns[row.source]?.db_bytes_after)}</>}</small>
         <button className="source-run" aria-label={`Delete ${row.name}`} disabled={locked} onClick={() => setPending({ kind: 'delete', source: row })}>Delete</button>
       </li>)}</ul>}
+    {storage && <p className="data-storage">Database {formatBytes(storage.database_bytes)} · Browser session {formatBytes(storage.browser_session_bytes)}</p>}
     <div className="data-actions">
       <button className="source-run" disabled={locked || !sources?.length} onClick={() => setPending({ kind: 'clear' })}>Clear all data</button>
       <button className="source-run" disabled={locked} onClick={() => setPending({ kind: 'fresh' })}>Fresh run</button>

@@ -210,3 +210,19 @@ async def test_deleting_a_source_on_page_two_reloads_page_one_once(database):
             assert not [url for url in job_requests if "page=2" in url], job_requests
             assert await page.locator("tbody tr:not(.detail)").count() == PER_PAGE
             await page.get_by_text("Page 1 of 2").wait_for()
+
+
+async def test_data_panel_shows_storage(database):
+    seed(database, "higheredjobs", 2)
+    run_id = database.start_run(["data"], source="higheredjobs")
+    database.finish_run(run_id, 2, 2, 0, [])
+    with serve_dashboard() as url:
+        async with browser_page() as page:
+            panel = await open_data_panel(page, url)
+            await panel.get_by_text("Database", exact=False).first.wait_for()
+            text = await panel.inner_text()
+            assert "Database" in text
+            import re
+            assert re.search(r"\d+(\.\d)? (B|KB|MB)", text)
+            row = panel.get_by_role("listitem").filter(has_text="HigherEdJobs")
+            assert "→" in await row.inner_text()

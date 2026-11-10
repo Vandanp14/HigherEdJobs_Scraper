@@ -3,7 +3,7 @@ import { ChevronDown, Database, ExternalLink, LoaderCircle, Play, RefreshCw, Sea
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import { request } from './api';
-import { DataPanel } from './DataPanel';
+import { DataPanel, storageChange } from './DataPanel';
 import { ForYouBoard } from './ForYouBoard';
 import { forYouDefaults } from './forYou';
 import { seniorityLabels, signalClass, sponsorshipLabels, type Filters, type Job, type ResumeState } from './types';
@@ -25,6 +25,8 @@ type Run = {
   jobs_discovered: number;
   new_jobs: number;
   updated_jobs: number;
+  db_bytes_before?: number | null;
+  db_bytes_after?: number | null;
   errors: { source?: string; group?: string; listing_url?: string; error: string }[];
 };
 
@@ -161,7 +163,7 @@ function App() {
         setNotice('HigherEdJobs verification was not completed in time. Run the search again and solve the verification in the browser window it opens.');
       } else {
         const errors = result.errors?.length ? ` ${result.errors.length} group(s) failed.` : '';
-        setNotice(`HigherEdJobs run complete: ${result.jobs_discovered} listings found (${result.new_jobs} new, ${result.updated_jobs} updated).${errors}`);
+        setNotice(`HigherEdJobs run complete: ${result.jobs_discovered} listings found (${result.new_jobs} new, ${result.updated_jobs} updated).${errors}${storageChange(result)}`);
       }
       await load();
     } catch (error) {
@@ -179,7 +181,7 @@ function App() {
     try {
       const result = await request('/runs/air', { method: 'POST' }) as Run;
       const errors = result.errors?.length ? ` ${result.errors.length} description(s) failed; rows were retained.` : '';
-      setNotice(`AIR run complete: ${result.jobs_discovered} listings found (${result.new_jobs} new, ${result.updated_jobs} updated).${errors}`);
+      setNotice(`AIR run complete: ${result.jobs_discovered} listings found (${result.new_jobs} new, ${result.updated_jobs} updated).${errors}${storageChange(result)}`);
       await load();
     } catch (error) {
       setNotice(`AIR run failed: ${(error as Error).message}`);
@@ -213,7 +215,7 @@ function App() {
       if (outcome.status === 'rejected') return `${name} failed: ${(outcome.reason as Error).message}`;
       const { jobs_discovered, new_jobs, errors } = outcome.value;
       if (errors?.some(error => error.error.includes('access check blocked'))) return `${name} verification was not completed in time`;
-      return `${name}: ${jobs_discovered} listings found (${new_jobs} new)${errors?.length ? `, ${errors.length} error(s)` : ''}`;
+      return `${name}: ${jobs_discovered} listings found (${new_jobs} new)${errors?.length ? `, ${errors.length} error(s)` : ''}${storageChange(outcome.value)}`;
     };
     try {
       setNotice(`Fresh run complete. ${summary('AIR', air)}. ${summary('HigherEdJobs', higheredjobs)}.`);

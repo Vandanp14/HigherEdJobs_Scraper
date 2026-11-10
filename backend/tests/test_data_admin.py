@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from fastapi.testclient import TestClient
 
 from backend.app import main
@@ -144,3 +146,65 @@ def test_clear_all_blocked_while_any_run_active(tmp_path):
     finally:
         main.RUNNING.discard("air")
         main.database = original
+
+
+def test_runs_record_storage_before_and_after(tmp_path):
+    db = Database(tmp_path / "jobs.sqlite3")
+    run_id = db.start_run(["data"], source="higheredjobs")
+    for number in range(20):
+        db.upsert_job(
+            JobDraft(source="higheredjobs", source_job_id=str(number), source_url=f"https://x/{number}",
+                     title=f"t{number}", normalized_description="We sponsor H-1B visas. " * 200),
+            "data",
+        )
+    db.finish_run(run_id, 20, 20, 0, [])
+    run = db.latest_run()
+    assert run["db_bytes_before"] > 0
+    assert run["db_bytes_after"] >= run["db_bytes_before"]
+
+
+def test_interrupted_runs_leave_storage_after_empty(tmp_path):
+    db = Database(tmp_path / "jobs.sqlite3")
+    db.start_run([], source="air")
+    db.close_interrupted_runs()
+    assert db.latest_run()["db_bytes_after"] is None
+
+
+def test_legacy_runs_have_null_storage(tmp_path):
+    import sqlite3
+    path = tmp_path / "legacy.sqlite3"
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        CREATE TABLE scrape_runs (
+          id INTEGER PRIMARY KEY, started_at TEXT NOT NULL, completed_at TEXT,
+          groups_run TEXT NOT NULL DEFAULT '[]', jobs_discovered INTEGER NOT NULL DEFAULT 0,
+          new_jobs INTEGER NOT NULL DEFAULT 0, updated_jobs INTEGER NOT NULL DEFAULT 0,
+          errors TEXT NOT NULL DEFAULT '[]'
+        );
+        INSERT INTO scrape_runs(started_at,completed_at) VALUES ('2026-09-01','2026-09-01');
+        """
+    )
+    connection.commit()
+    connection.close()
+    run = Database(path).latest_run()
+    assert run["db_bytes_before"] is None
+    assert run["db_bytes_after"] is None
+
+
+def test_storage_endpoint_reports_sizes(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "database", Database(tmp_path / "jobs.sqlite3"))
+    monkeypatch.setattr(main, "settings", replace(main.settings, state_path=tmp_path / "missing-state.json"))
+    client = TestClient(main.app)
+    body = client.get("/api/data/storage").json()
+    assert isinstance(body["database_bytes"], int) and body["database_bytes"] > 0
+    assert body["browser_session_bytes"] == 0
+
+    state = tmp_path / "state.json"
+    state.write_text('{"cookies": []}')
+    before = state.stat().st_mtime_ns
+    monkeypatch.setattr(main, "settings", replace(main.settings, state_path=state))
+    body = client.get("/api/data/storage").json()
+    assert body["browser_session_bytes"] == len('{"cookies": []}')
+    assert state.stat().st_mtime_ns == before
+    assert state.read_text() == '{"cookies": []}'

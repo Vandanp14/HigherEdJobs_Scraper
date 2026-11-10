@@ -60,7 +60,7 @@ class HigherEdJobsScraper:
         finally:
             self.database.finish_run(run_id, discovered, new, updated, errors)
             report(HEJ, f"Finished in {elapsed(time.monotonic() - started)}: {discovered} listings, {new} new, {len(errors)} errors")
-        return self.database.latest_run()
+        return self.database.latest_run("higheredjobs")
 
     async def _run_group(self, context: BrowserContext, group: dict, fetched: dict[str, int], errors: list[dict]):
         name = group["name"]
@@ -267,7 +267,7 @@ class AIRScraper:
         finally:
             self.database.finish_run(run_id, discovered, new, updated, errors)
             report("AIR", f"Finished in {elapsed(time.monotonic() - started)}: {discovered} listings, {new} new, {len(errors)} errors")
-        return self.database.latest_run()
+        return self.database.latest_run("air")
 
     async def _ensure_access(self, page):
         checked_soup(await page.content(), "AIR")

@@ -1,3 +1,4 @@
+import os
 import html
 import json
 import re
@@ -39,6 +40,7 @@ class Database:
     def __init__(self, path: Path, resume_path: Path | None = None):
         path.parent.mkdir(parents=True, exist_ok=True)
         # Without a readable resume, jobs stay unscored and only the For you tab notices.
+        self.path = path
         self.resume_path = resume_path
         self.resume = load_resume(resume_path) if resume_path else None
         self.connection = sqlite3.connect(path, check_same_thread=False)
@@ -115,7 +117,11 @@ class Database:
                 "fit_details": "TEXT NOT NULL DEFAULT '{}'",
                 "fit_version": "TEXT",
             },
-            "scrape_runs": {"source": "TEXT NOT NULL DEFAULT 'higheredjobs'"},
+            "scrape_runs": {
+                "source": "TEXT NOT NULL DEFAULT 'higheredjobs'",
+                "db_bytes_before": "INTEGER",
+                "db_bytes_after": "INTEGER",
+            },
             "search_groups": {"categories": "TEXT NOT NULL DEFAULT ''", "trusted": "INTEGER NOT NULL DEFAULT 0"},
             "sponsorship_analysis": {"signals": "TEXT NOT NULL DEFAULT '[]'"},
         }
@@ -151,16 +157,26 @@ class Database:
         self.connection.commit()
         return cursor.rowcount > 0
 
+    def storage_bytes(self) -> int:
+        """Size of the database file plus its -wal/-shm sidecars: a few os.stat calls, no scan."""
+        total = 0
+        for suffix in ("", "-wal", "-shm"):
+            try:
+                total += os.stat(f"{self.path}{suffix}").st_size
+            except OSError:
+                pass
+        return total
+
     def start_run(self, group_ids: list[str], source: str = "higheredjobs") -> int:
         cursor = self.connection.execute(
-            "INSERT INTO scrape_runs(started_at,source,groups_run) VALUES (?,?,?)",
-            (utcnow(), source, json.dumps(group_ids)),
+            "INSERT INTO scrape_runs(started_at,source,groups_run,db_bytes_before) VALUES (?,?,?,?)",
+            (utcnow(), source, json.dumps(group_ids), self.storage_bytes()),
         )
         self.connection.commit()
         return cursor.lastrowid
 
     def finish_run(self, run_id: int, discovered: int, new: int, updated: int, errors: list[dict]):
-        self.connection.execute("UPDATE scrape_runs SET completed_at=?, jobs_discovered=?, new_jobs=?, updated_jobs=?, errors=? WHERE id=?", (utcnow(), discovered, new, updated, json.dumps(errors), run_id))
+        self.connection.execute("UPDATE scrape_runs SET completed_at=?, jobs_discovered=?, new_jobs=?, updated_jobs=?, errors=?, db_bytes_after=? WHERE id=?", (utcnow(), discovered, new, updated, json.dumps(errors), self.storage_bytes(), run_id))
         self.connection.commit()
 
     def close_interrupted_runs(self):

@@ -60,3 +60,5 @@ export const toggleItem = (list: string[], item: string) => (list.includes(item)
 
 // One job board's saved data, from GET /api/data/sources.
 export type DataSource = { source: string; name: string; jobs: number; applied: number; with_notes: number };
+// GET /api/data/storage: file sizes in bytes.
+export type StorageUse = { database_bytes: number; browser_session_bytes: number };

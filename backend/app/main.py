@@ -90,6 +90,12 @@ async def reanalyze(): return {"reanalyzed":database.reanalyze()}
 SOURCE_NAMES={"higheredjobs":"HigherEdJobs","air":"AIR Career Center","greenhouse":"Greenhouse","lever":"Lever","ashby":"Ashby","workday":"Workday","smartrecruiters":"SmartRecruiters"}
 @app.get("/api/data/sources")
 async def data_sources(): return [{**row,"name":SOURCE_NAMES.get(row["source"],row["source"])} for row in database.source_counts()]
+@app.get("/api/data/storage")
+async def data_storage():
+    # Only os.stat: the browser session file is never opened.
+    try: session=settings.state_path.stat().st_size
+    except OSError: session=0
+    return {"database_bytes":database.storage_bytes(),"browser_session_bytes":session}
 @app.delete("/api/data/sources/{source}")
 async def delete_source_data(source: str):
     if source in RUNNING: raise HTTPException(409,"A run for this source is in progress")
