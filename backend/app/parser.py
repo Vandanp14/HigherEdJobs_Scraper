@@ -278,12 +278,6 @@ def normalize_hej_description(raw: str) -> str:
     return _lines(soup.get_text())
 
 
-def normalize_ats_description(raw: str) -> str:
-    """ATS boards send HTML, and Greenhouse escapes it once (`&lt;p&gt;`), which the
-    HigherEdJobs cleaner already handles; kept separate so the two can diverge."""
-    return normalize_hej_description(raw)
-
-
 def normalize_air_description(raw: str) -> str:
     soup = BeautifulSoup(raw, "html.parser")
     for unwanted in soup.select("script, style, noscript"):

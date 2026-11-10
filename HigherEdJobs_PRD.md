@@ -1111,7 +1111,7 @@ Resume matching
 Resume tailoring
 Cover letter generation
 Application deadline detection
-Multiple job boards (Company boards: see docs/superpowers/specs/2026-11-05-company-boards-design.md)
+Multiple job boards
 Export CSV
 Export Excel
 Saved dashboard views

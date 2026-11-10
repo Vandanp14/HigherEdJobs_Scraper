@@ -33,7 +33,7 @@ def test_jobs_api_exposes_source_fields_and_filters_air_jobs(tmp_path):
         assert item["description_status"] == "Pending"
 
         sources = TestClient(main.app).get("/api/sources")
-        assert {source["id"] for source in sources.json()} == {"higheredjobs", "air", "boards"}
+        assert {source["id"] for source in sources.json()} == {"higheredjobs", "air"}
     finally:
         main.database = original
 

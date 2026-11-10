@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Wipe saved HigherEdJobs and AIR jobs, their statuses, notes, and run history. Company boards jobs,
-# their statuses and notes, and the company list are kept, as is the HigherEdJobs browser session.
+# Wipe all saved jobs, statuses, notes, and run history. The HigherEdJobs browser session is kept.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -11,5 +10,5 @@ if [ -n "$RUNNING" ]; then
   exit 1
 fi
 
-echo "$(date +%H:%M:%S) [clear] Wiping saved HigherEdJobs and AIR jobs (Company boards jobs and browser session are kept)..."
+echo "$(date +%H:%M:%S) [clear] Wiping saved jobs (browser session is kept)..."
 .venv/bin/python scripts/manage-data.py clear-jobs

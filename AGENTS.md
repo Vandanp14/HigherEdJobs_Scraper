@@ -2,13 +2,13 @@
 
 ## Project Structure & Module Organization
 
-`HigherEdJobs_PRD.md` defines the HigherEdJobs scraper and sponsorship review dashboard; read its V1 scope and acceptance criteria before implementing changes. Later scope is specified in `docs/superpowers/specs/` (for example Company boards, `2026-11-05-company-boards-design.md`). The backend lives in `backend/app` (FastAPI, Playwright, SQLite; Company boards sources in `backend/app/sources/`), tests in `backend/tests`, the React dashboard in `frontend/`, and helper scripts in `scripts/`. See `README.md` for setup.
+This project is currently specification-only. `HigherEdJobs_PRD.md` defines the HigherEdJobs scraper and sponsorship review dashboard; read its V1 scope and acceptance criteria before implementing changes. No source, test, or asset directories exist yet.
 
 The PRD recommends React/TypeScript, FastAPI/Python, Playwright, and SQLite; these are recommendations, not installed dependencies. When scaffolding, keep frontend, backend, scraping, parsing, classification, and persistence responsibilities separate. Document the chosen directory layout and setup in a README.
 
 ## Build, Test, and Development Commands
 
-Commands and dependencies are documented in `README.md`: `./run.sh`, `./view.sh`, `.venv/bin/pytest`, and `npm run build` in `frontend/`.
+No build, development, test, or lint commands are configured yet. Add reproducible commands and dependency manifests when introducing the implementation.
 
 The PRD suggests this command for interactive site discovery once Playwright is available:
 
@@ -43,4 +43,4 @@ PRs should explain behavior changes, reference relevant PRD sections or issues, 
 
 ## Scraping & Data Integrity
 
-On HigherEdJobs, modify only the Keyword search field and the Category (`JobCat`) filter. Company boards read public ATS job data (Greenhouse, Lever, Ashby, Workday, SmartRecruiters) found from free public company lists; no search engine is scraped. On `403`, `429` or a challenge page, back off and stop requesting that host for the run; never bypass a block (no CAPTCHA solving, fingerprint spoofing or proxy rotation). Use conservative request rates, caching, and applicable access restrictions. Preserve raw descriptions, exact classification evidence, original links, and historical records. Never interpret missing sponsorship language as guaranteed eligibility.
+Modify only the Keyword search field and the Category (`JobCat`) filter in V1. Use conservative request rates, caching, and applicable access restrictions. Preserve raw descriptions, exact classification evidence, original links, and historical records. Never interpret missing sponsorship language as guaranteed eligibility.

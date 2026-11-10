@@ -16,13 +16,10 @@ type Props = {
   goToPage: (page: number) => void;
   onOpen: (job: Job) => void;
   onApplied: (job: Job) => void;
-  heading?: string;
-  notice?: string;
-  dayOptions?: string[][];
 };
 
-const forYouDays = [['all', 'Any time'], ['7', 'Past 7 days'], ['14', 'Past 14 days'], ['30', 'Past 30 days']];
-const otherSelects: [string, string, string[][]][] = [
+const selects: [string, string, string[][]][] = [
+  ['days', 'Posted', [['all', 'Any time'], ['7', 'Past 7 days'], ['14', 'Past 14 days'], ['30', 'Past 30 days']]],
   ['min_fit', 'Fit', [['', 'Any fit'], ['40', '40 and up'], ['60', '60 and up'], ['80', '80 and up']]],
   ['application_status', 'Status', [['open', 'Open work'], ['unapplied', 'Not applied'], ['New', 'New'], ['Opened', 'Opened'], ['Applied', 'Applied'], ['Skipped', 'Skipped'], ['any', 'All']]],
   ['sort', 'Sort', [['fit', 'Best fit'], ['newest', 'Newest posted'], ['fit_only', 'Fit only']]],
@@ -38,8 +35,7 @@ const readPanel = () => {
 };
 const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName));
 
-export function ForYouBoard({ resume, jobs, total, page, perPage, loading, filters, update, goToPage, onOpen, onApplied, heading = 'Ranked for you', notice = 'Best match to your resume first; newer jobs win close calls.', dayOptions = forYouDays }: Props) {
-  const selects: [string, string, string[][]][] = [['days', 'Posted', dayOptions], ...otherSelects];
+export function ForYouBoard({ resume, jobs, total, page, perPage, loading, filters, update, goToPage, onOpen, onApplied }: Props) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [panelOpen, setPanelOpenState] = useState(readPanel);
   // The first row is selected whenever the selected job leaves the page (load, page change, filter).
@@ -89,7 +85,7 @@ export function ForYouBoard({ resume, jobs, total, page, perPage, loading, filte
   const excluded = filters.hide ? filters.hide.split(',') : [];
 
   return <>
-    <div className="queue-header"><div><h2>{heading}</h2><span>{loading ? 'Refreshing results…' : total > perPage ? `${total} roles ranked · showing ${(page - 1) * perPage + 1}–${Math.min(page * perPage, total)}` : `${total} roles ranked`}</span></div><span className="notice">{notice}</span></div>
+    <div className="queue-header"><div><h2>Ranked for you</h2><span>{loading ? 'Refreshing results…' : total > perPage ? `${total} roles ranked · showing ${(page - 1) * perPage + 1}–${Math.min(page * perPage, total)}` : `${total} roles ranked`}</span></div><span className="notice">Best match to your resume first; newer jobs win close calls.</span></div>
     <div className="toolbar">
       <label className="search"><Search size={16} /><input value={filters.query} onChange={event => update('query', event.target.value)} placeholder="Search title, institution, or location" /></label>
       <div className="filters">

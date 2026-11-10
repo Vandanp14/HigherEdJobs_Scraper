@@ -57,12 +57,3 @@ export const signalClass = (signal: string) => ({
 export const toggleItem = (list: string[], item: string) => (list.includes(item)
   ? list.filter(value => value !== item)
   : [...list, item]).join(',');
-
-// Mirrors BOARD_SOURCES in backend/app/config.py: the ATS boards behind Company boards.
-export const boardSources = ['greenhouse', 'lever', 'ashby', 'workday', 'smartrecruiters'];
-export const isBoardSource = (source: string) => boardSources.includes(source);
-const sourceLabels: Record<string, string> = {
-  higheredjobs: 'HigherEdJobs', air: 'AIR', greenhouse: 'Greenhouse', lever: 'Lever', ashby: 'Ashby',
-  workday: 'Workday', smartrecruiters: 'SmartRecruiters',
-};
-export const sourceLabel = (source: string) => sourceLabels[source] ?? source;

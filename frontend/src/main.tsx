@@ -4,33 +4,26 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import { ForYouBoard } from './ForYouBoard';
 import { forYouDefaults } from './forYou';
-import { boardSources, isBoardSource, seniorityLabels, signalClass, sourceLabel, sponsorshipLabels, type Filters, type Job, type ResumeState } from './types';
+import { seniorityLabels, signalClass, sponsorshipLabels, type Filters, type Job, type ResumeState } from './types';
 
 type Group = { id: string; name: string; query: string; categories: string; enabled: boolean };
 type Source = { id: string; name: string; description: string; supports_queries: boolean; last_run?: Run | null };
-type Board = 'foryou' | 'higheredjobs' | 'air' | 'companyRanked' | 'companyAll';
-const isCompany = (board: Board) => board === 'companyRanked' || board === 'companyAll';
+type Board = 'foryou' | 'higheredjobs' | 'air';
 // Each board keeps its own filters: HigherEdJobs is dated by posting, AIR by application due date.
 // Roles a new-grad BS holder does not qualify for start hidden on the source boards; For you hides nothing.
 const defaultFilters: Record<Board, Filters> = {
   foryou: forYouDefaults,
   higheredjobs: { query: '', group: '', sponsorship: '', description: '', application_status: '', days: '7', sort: 'newest', hide: seniorityLabels.join(',') },
   air: { query: '', sponsorship: '', description: '', application_status: '', due: 'upcoming', sort: 'due_soon', hide: seniorityLabels.join(',') },
-  // Company boards: early-career roles from public ATS boards. `ats` narrows to one board type.
-  companyRanked: { ...forYouDefaults, ats: '' },
-  companyAll: { query: '', sponsorship: '', description: '', application_status: '', days: '7', sort: 'newest', hide: seniorityLabels.join(','), closed: '', ats: '' },
 };
-const companyDays = [['1', 'Past 24 hours'], ['7', 'Past 7 days'], ['30', 'Past 30 days'], ['all', 'All time']];
 type Run = {
   source: string;
   completed_at: string | null;
   jobs_discovered: number;
   new_jobs: number;
   updated_jobs: number;
-  errors: { source?: string; group?: string; listing_url?: string; company?: string; error: string }[];
-  summary?: { companies_total?: number; companies_checked?: number; companies_succeeded?: number; companies_failed?: number; companies_skipped?: number; jobs_kept?: number; jobs_closed?: number };
+  errors: { source?: string; group?: string; listing_url?: string; error: string }[];
 };
-const running = (source?: Source) => Boolean(source?.last_run && !source.last_run.completed_at);
 
 const request = async (path: string, init?: RequestInit) => {
   const response = await fetch('/api' + path, init);
@@ -66,13 +59,8 @@ function App() {
   const [board, setBoard] = useState<Board>('foryou');
   const [boardFilters, setBoardFilters] = useState(defaultFilters);
   const filters = boardFilters[board];
-  // AIR has no posted date, so its board turns off the posted-date window. Company boards ask for
-  // every ATS source, or the one picked in the ATS filter; `ats` itself is not an API parameter.
-  const parameters = useMemo(() => {
-    const { ats, ...rest } = filters;
-    const source = isCompany(board) ? (ats || boardSources.join(',')) : board === 'foryou' ? 'higheredjobs' : board;
-    return new URLSearchParams({ ...rest, source, ...(board === 'air' ? { days: '' } : {}) }).toString();
-  }, [filters, board]);
+  // AIR has no posted date, so its board turns off the posted-date window.
+  const parameters = useMemo(() => new URLSearchParams({ ...filters, source: board === 'foryou' ? 'higheredjobs' : board, ...(board === 'air' ? { days: '' } : {}) }).toString(), [filters, board]);
   const update = (key: string, value: string) => {
     setPage(1);
     setBoardFilters(current => ({ ...current, [board]: { ...current[board], [key]: value } }));
@@ -128,19 +116,17 @@ function App() {
       try {
         const sourceList = await request('/sources') as Source[];
         setSources(sourceList);
-        // A Company boards run can take hours; it refreshes the jobs but never locks the other runs.
-        const othersRunning = sourceList.some(source => source.id !== 'boards' && running(source));
-        const boardsRunning = running(sourceList.find(source => source.id === 'boards'));
-        if (othersRunning || externalRun || boardsRunning) await load();
-        if (othersRunning && !externalRun) setNotice('A run started from the terminal is in progress — new jobs appear automatically.');
-        if (!othersRunning && externalRun) {
+        const running = sourceList.some(source => source.last_run && !source.last_run.completed_at);
+        if (running || externalRun) await load();
+        if (running && !externalRun) setNotice('A run started from the terminal is in progress — new jobs appear automatically.');
+        if (!running && externalRun) {
           const errors = sourceList.flatMap(source => source.last_run?.errors ?? []);
           const blocked = errors.some(error => error.error.includes('access check blocked'));
           setNotice(blocked
             ? 'Run finished, but HigherEdJobs verification was not completed. Run HigherEdJobs again and solve the verification in the browser window it opens.'
             : `Run finished.${errors.length ? ` ${errors.length} error(s) recorded.` : ''}`);
         }
-        setExternalRun(othersRunning);
+        setExternalRun(running);
       } catch {
         // Server stopped; keep the current view.
       }
@@ -202,19 +188,6 @@ function App() {
       finishRun();
     }
   };
-  // Not awaited: the run can take hours. Its progress comes from polling /sources.
-  const runBoards = () => {
-    setNotice('Company boards run started. It can take hours; progress shows above and jobs appear as they are saved.');
-    request('/runs/boards', { method: 'POST' }).then(load).catch(error => setNotice(`Company boards run failed: ${(error as Error).message}`));
-  };
-  const boardsSource = sources.find(source => source.id === 'boards');
-  const boardsRun = boardsSource?.last_run;
-  const boardsRunning = running(boardsSource);
-  const boardsCounts = (run: Run) => {
-    const summary = run.summary ?? {};
-    return `${summary.companies_checked ?? 0} of ${summary.companies_total ?? 0} companies, ${summary.jobs_kept ?? 0} jobs kept, ${summary.companies_failed ?? 0} failed`;
-  };
-  const runners: Record<string, () => void> = { higheredjobs: runHigherEdJobs, air: runAir, boards: runBoards };
   const reanalyze = async () => {
     if (activeRun) return;
     beginRun('reanalyze');
@@ -249,11 +222,7 @@ function App() {
   const options: [string, string[][]][] = [
     board === 'air'
       ? ['due', [['upcoming', 'Not expired'], ['7', 'Due in 7 days'], ['14', 'Due in 14 days'], ['30', 'Due in 30 days'], ['expired', 'Expired'], ['all', 'All dates']]]
-      : ['days', isCompany(board) ? companyDays : [['0', 'Today'], ['3', 'Past 3 days'], ['7', 'Past 7 days'], ['14', 'Past 14 days'], ['30', 'Past 30 days'], ['all', 'All time']]],
-    ...(isCompany(board) ? [
-      ['ats', [['', 'All boards'], ...boardSources.map(source => [source, sourceLabel(source)])]],
-      ['closed', [['', 'Hide closed'], ['include', 'Include closed']]],
-    ] as [string, string[][]][] : []),
+      : ['days', [['0', 'Today'], ['3', 'Past 3 days'], ['7', 'Past 7 days'], ['14', 'Past 14 days'], ['30', 'Past 30 days'], ['all', 'All time']]],
     ['description', [['complete', 'Complete only'], ['', 'Any description state'], ['missing', 'Missing description'], ['failed', 'Failed to capture']]],
     ['application_status', [['', 'Open work'], ['New', 'New'], ['Opened', 'Opened'], ['Applied', 'Applied'], ['Skipped', 'Skipped']]],
     ['sort', board === 'air'
@@ -264,7 +233,7 @@ function App() {
   return <div className="workspace">
     <main className="content">
       <header className="topbar">
-        <div className="brand"><span>HEJ</span><div><h1>Job review queue</h1><small>Sponsorship wording for HigherEdJobs, AIR and company job boards · data stays on this device</small></div></div>
+        <div className="brand"><span>HEJ</span><div><h1>Job review queue</h1><small>Sponsorship wording for HigherEdJobs and AIR roles · data stays on this device</small></div></div>
         <div className="header-actions">
           <button className="button secondary" aria-expanded={showSources} onClick={() => setShowSources(!showSources)}><Settings2 size={15} /> Search sources</button>
           <button className="button secondary" disabled={Boolean(activeRun)} onClick={reanalyze}>{activeRun === 'reanalyze' ? <LoaderCircle className="animate-spin" size={15} /> : <RefreshCw size={15} />} {activeRun === 'reanalyze' ? `Re-analyzing · ${elapsedLabel}` : 'Re-analyze saved jobs'}</button>
@@ -273,37 +242,32 @@ function App() {
         </div>
       </header>
       {notice && <p className="run-notice" role="status">{notice}</p>}
-      {boardsRunning && boardsRun && <p className="run-progress" role="status"><LoaderCircle className="animate-spin" size={15} /><span><b>Boards run: {boardsCounts(boardsRun)}</b><small>Company boards are checked one request at a time per ATS. Other runs stay available.</small></span></p>}
       {activeRun && <p className="run-progress" role="status"><LoaderCircle className="animate-spin" size={15} /><span><b>{activeRun === 'higheredjobs' ? 'HigherEdJobs search' : activeRun === 'air' ? 'AIR refresh' : 'Description re-analysis'} in progress</b><small>Elapsed {elapsedLabel}. Keep this tab open; do not refresh while it runs.</small></span></p>}
       {showSources && <section className="sources">
         <div className="section-title"><div><h2>Search sources</h2><p>Run AIR independently or enable the keyword groups used by HigherEdJobs.</p></div><button className="icon-button" aria-label="Close search sources" onClick={() => setShowSources(false)}>×</button></div>
         <div className="source-grid">
-          {sources.map(source => <div key={source.id} className="source source-info"><b>{source.name}</b><small>{source.description}</small><button className="source-run" onClick={runners[source.id]} disabled={source.id === 'boards' ? running(source) : Boolean(activeRun) || externalRun}>{activeRun === source.id || (source.id === 'boards' && running(source)) ? `Running${source.id === 'boards' ? '' : ` · ${elapsedLabel}`}` : 'Run source'}</button></div>)}
+          {sources.map(source => <div key={source.id} className="source source-info"><b>{source.name}</b><small>{source.description}</small><button className="source-run" onClick={source.id === 'air' ? runAir : runHigherEdJobs} disabled={Boolean(activeRun) || externalRun}>{activeRun === source.id ? `Running · ${elapsedLabel}` : 'Run source'}</button></div>)}
           {groups.map(group => <label key={group.id} className="source"><input type="checkbox" checked={group.enabled} onChange={async event => { await request('/groups/' + group.id, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: event.target.checked }) }); load(); }} /><span><b>{group.name}</b><small>{group.query || 'HigherEdJobs job category filter'}</small></span></label>)}
         </div>
       </section>}
       <section className="queue">
-        <div className="board-tabs" role="tablist" aria-label="Job board">{([['foryou', 'For you'], ['higheredjobs', 'HigherEdJobs'], ['air', 'AIR Career Center'], ['companyRanked', 'Company boards']] as [Board, string][]).map(([id, label]) => {
-          const selected = id === 'companyRanked' ? isCompany(board) : board === id;
-          return <button key={id} role="tab" aria-selected={selected} className={selected ? 'selected' : ''} onClick={() => { if (!selected) { setBoard(id); setPage(1); setExpanded(null); } }}>{label}</button>;
-        })}</div>
-        {isCompany(board) && <div className="board-tabs board-subtabs" role="tablist" aria-label="Company boards view">{([['companyRanked', 'Ranked'], ['companyAll', 'All jobs']] as [Board, string][]).map(([id, label]) => <button key={id} role="tab" aria-selected={board === id} className={board === id ? 'selected' : ''} onClick={() => { setBoard(id); setPage(1); setExpanded(null); }}>{label}</button>)}{boardsRun?.completed_at && <span className="board-run-summary">Last boards run: {boardsRun.summary?.companies_succeeded ?? 0} boards read, {boardsRun.summary?.companies_failed ?? 0} failed, {boardsRun.summary?.companies_skipped ?? 0} skipped, {boardsRun.summary?.jobs_kept ?? 0} jobs kept, {boardsRun.summary?.jobs_closed ?? 0} closed</span>}</div>}
-        {board === 'foryou' || board === 'companyRanked' ? <ForYouBoard resume={resume} jobs={jobs} total={total} page={page} perPage={perPage} loading={loading} filters={filters} update={update} goToPage={goToPage} onOpen={job => opened(job.id)} onApplied={job => updateStatus(job.id, 'Applied')} {...(board === 'companyRanked' ? { heading: 'Company boards, ranked for you', notice: 'Early-career software roles from company job boards, best resume match first.', dayOptions: companyDays } : {})} /> : <>
-        <div className="queue-header"><div><h2>{board === 'air' ? 'AIR Career Center queue' : isCompany(board) ? 'Company boards queue' : 'HigherEdJobs queue'}</h2><span>{loading ? 'Refreshing results…' : total > perPage ? `${total} roles in this view · showing ${(page - 1) * perPage + 1}–${Math.min(page * perPage, total)}` : `${total} roles in this view`}</span></div><span className="notice">Open source wording before making a decision.</span></div>
+        <div className="board-tabs" role="tablist" aria-label="Job board">{([['foryou', 'For you'], ['higheredjobs', 'HigherEdJobs'], ['air', 'AIR Career Center']] as [Board, string][]).map(([id, label]) => <button key={id} role="tab" aria-selected={board === id} className={board === id ? 'selected' : ''} onClick={() => { setBoard(id); setPage(1); setExpanded(null); }}>{label}</button>)}</div>
+        {board === 'foryou' ? <ForYouBoard resume={resume} jobs={jobs} total={total} page={page} perPage={perPage} loading={loading} filters={filters} update={update} goToPage={goToPage} onOpen={job => opened(job.id)} onApplied={job => updateStatus(job.id, 'Applied')} /> : <>
+        <div className="queue-header"><div><h2>{board === 'air' ? 'AIR Career Center queue' : 'HigherEdJobs queue'}</h2><span>{loading ? 'Refreshing results…' : total > perPage ? `${total} roles in this view · showing ${(page - 1) * perPage + 1}–${Math.min(page * perPage, total)}` : `${total} roles in this view`}</span></div><span className="notice">Open source wording before making a decision.</span></div>
         <div className="toolbar">
           <label className="search"><Search size={16} /><input value={filters.query} onChange={event => update('query', event.target.value)} placeholder="Search title, institution, or location" /></label>
           <div className="filters">
-            {options.map(([key, values]) => <label key={key}><span>{key === 'days' ? 'Posted' : key === 'due' ? 'Due' : key === 'sponsorship' ? 'Sponsorship' : key === 'description' ? 'Description' : key === 'application_status' ? 'Status' : key === 'ats' ? 'ATS' : key === 'closed' ? 'Closed' : 'Sort'}</span><select value={filters[key]} onChange={event => update(key, event.target.value)}>{values.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>)}
+            {options.map(([key, values]) => <label key={key}><span>{key === 'days' ? 'Posted' : key === 'due' ? 'Due' : key === 'sponsorship' ? 'Sponsorship' : key === 'description' ? 'Description' : key === 'application_status' ? 'Status' : 'Sort'}</span><select value={filters[key]} onChange={event => update(key, event.target.value)}>{values.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>)}
           </div>
         </div>
         <div className="query-filter"><span>Sponsorship</span><button className={selectedSignals.length ? '' : 'selected'} onClick={() => update('sponsorship', '')}>All signals</button>{sponsorshipLabels.map(([status, label]) => <button key={status} aria-pressed={selectedSignals.includes(status)} className={selectedSignals.includes(status) ? 'selected' : ''} onClick={() => toggleSignal(status)}>{label}</button>)}</div>
         <div className="query-filter"><span>Hide roles</span><button className={hiddenLabels.length ? '' : 'selected'} onClick={() => update('hide', '')}>Show all</button>{seniorityLabels.map(label => <button key={label} aria-pressed={hiddenLabels.includes(label)} className={hiddenLabels.includes(label) ? 'selected' : ''} onClick={() => toggleHidden(label)}>{label}</button>)}</div>
         {board === 'higheredjobs' && <div className="query-filter"><span>Query filter</span><button className={selectedGroups.length ? '' : 'selected'} onClick={() => update('group', '')}>All queries</button>{groups.map(group => <button key={group.id} className={selectedGroups.includes(group.id) ? 'selected' : ''} onClick={() => toggleGroup(group.id)}>{group.name}</button>)}</div>}
         <div className="table-scroll"><table><thead><tr><th className="role-col">Role</th><th>Location · Salary</th><th>{board === 'air' ? 'Due' : 'Posted'}</th><th>Sponsorship</th><th className="evidence-col">Evidence</th><th>Progress</th><th>Links</th></tr></thead><tbody>{jobs.map(job => <>{<tr key={job.id}>
-          <td className="role"><strong>{job.title || 'Untitled listing'}</strong><span>{job.institution || 'Institution unavailable'}</span><span className="role-source"><span className={'source-badge source-' + job.source}>{sourceLabel(job.source)}</span>{job.search_groups && <small className="source-meta">{job.search_groups}</small>}</span>{job.seniority_flags.length > 0 && <span className="seniority-flags">{job.seniority_flags.map(flag => <span key={flag.label} className="signal signal-caution seniority-badge" title={'Matched: ' + flag.evidence}>{flag.label}</span>)}</span>}</td>
+          <td className="role"><strong>{job.title || 'Untitled listing'}</strong><span>{job.institution || 'Institution unavailable'}</span><span className="role-source"><span className={'source-badge source-' + job.source}>{job.source === 'air' ? 'AIR' : 'HigherEdJobs'}</span>{job.search_groups && <small className="source-meta">{job.search_groups}</small>}</span>{job.seniority_flags.length > 0 && <span className="seniority-flags">{job.seniority_flags.map(flag => <span key={flag.label} className="signal signal-caution seniority-badge" title={'Matched: ' + flag.evidence}>{flag.label}</span>)}</span>}</td>
           <td className="place"><span>{job.location || '—'}</span><small>{job.salary || 'Salary not listed'}</small></td>
           <td className="date"><small>{job.source === 'air' ? 'Due' : 'Posted'}</small><span>{(job.source === 'air' ? job.application_due_date : job.posted_date) || '—'}</span></td>
-          <td><span className={'signal ' + signalClass(job.sponsorship_status)}>{job.sponsorship_status}</span><small className="confidence">{job.confidence}</small>{parseSignals(job.signals).filter(signal => !(signal === 'Non-college employer' && isBoardSource(job.source))).map(signal => <span key={signal} className={'signal signal-badge ' + (signal === 'Non-college employer' || signal === 'No E-Verify' ? 'signal-caution' : 'signal-positive')}>{signal}</span>)}</td>
+          <td><span className={'signal ' + signalClass(job.sponsorship_status)}>{job.sponsorship_status}</span><small className="confidence">{job.confidence}</small>{parseSignals(job.signals).map(signal => <span key={signal} className={'signal signal-badge ' + (signal === 'Non-college employer' || signal === 'No E-Verify' ? 'signal-caution' : 'signal-positive')}>{signal}</span>)}</td>
           <td className="evidence"><button aria-controls={'description-' + job.id} aria-expanded={expanded === job.id} onClick={() => setExpanded(expanded === job.id ? null : job.id)}>{job.description_status === 'Failed' ? 'Description failed' : job.evidence || (job.description_status === 'Pending' ? 'Description pending' : 'View description')}<ChevronDown size={14} /></button></td>
           <td><select className="status-select" value={job.application_status} onChange={event => updateStatus(job.id, event.target.value)}><option>New</option><option>Opened</option><option>Applied</option><option>Skipped</option></select></td>
           <td><div className="link-cell"><a onClick={() => opened(job.id)} href={job.source_url} target="_blank" rel="noreferrer">Listing <ExternalLink size={12} /></a>{job.apply_url && <a onClick={() => opened(job.id)} href={job.apply_url} target="_blank" rel="noreferrer">Apply <ExternalLink size={12} /></a>}</div></td>

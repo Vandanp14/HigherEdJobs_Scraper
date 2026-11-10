@@ -69,4 +69,3 @@ th:nth-child(5) { width:22%; } th:nth-child(6) { width:11%; } th:nth-child(7) { 
 .fit-keys { margin:2px 0 0; color:#8a989f; font-size:10px; }.fit-keys kbd { padding:0 4px; border:1px solid #d5dfe3; border-radius:3px; background:#f6f8f9; color:#526671; font:inherit; font-size:10px; }
 .fit-panel-empty { color:#7d8b93; font-size:12px; }
 @media (max-width:900px) { .fit-layout,.fit-layout.collapsed { grid-template-columns:1fr; }.fit-panel { position:relative; top:auto; }.fit-panel-expand { position:static; justify-self:end; } }
-.board-subtabs { align-items:center; padding-top:4px; background:#fafcfc; }.board-run-summary { margin-left:auto; padding-bottom:8px; color:#6d808a; font-size:11px; font-variant-numeric:tabular-nums; }

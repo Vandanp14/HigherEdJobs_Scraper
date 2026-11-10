@@ -6,16 +6,16 @@ Local job discovery and sponsorship-language review based on `HigherEdJobs_PRD.m
 
 | Command | What it does |
 |---|---|
-| `./daily.sh` | Morning: wipe saved HigherEdJobs and AIR jobs, then run a fresh scrape (`clear.sh` + `run.sh`). |
+| `./daily.sh` | Morning: wipe saved jobs, then run a fresh scrape (`clear.sh` + `run.sh`). |
 | `./run.sh` | Open the dashboard and scrape **without wiping**. Jobs already saved with a description are skipped, so a later run the same day only opens new listings. Statuses and notes are kept; jobs that failed before are retried. |
 | `./view.sh` | Open the dashboard with the jobs already saved. Nothing is scraped or wiped. |
-| `./clear.sh` | Wipe saved HigherEdJobs and AIR jobs only. Refuses while the server is running. |
+| `./clear.sh` | Wipe saved jobs only. Refuses while the server is running. |
 
 The dashboard uses port 8000, or the first free port up to 8010 if another project holds 8000; the terminal prints the URL. The scripts recognise this dashboard by its `/api/health` response, so only it, not another project, blocks `clear.sh` and a second `run.sh`. The development setup below still assumes port 8000.
 
-`./clear.sh` (and so `./daily.sh`) **wipes saved HigherEdJobs and AIR jobs**, including their application statuses (Opened, Applied, Skipped) and notes. Company boards jobs, their statuses and notes, and the company list are kept. The saved browser session in `data/browser-state.json` is kept.
+`./clear.sh` (and so `./daily.sh`) **wipes all saved jobs**, including application statuses (Opened, Applied, Skipped) and notes. The saved browser session in `data/browser-state.json` is kept.
 
-`./run.sh` rebuilds the dashboard if its source changed, serves the API and dashboard, opens it, and starts the HigherEdJobs, AIR and Company boards runs. Saved jobs show immediately; new ones appear as they are fetched.
+`./run.sh` rebuilds the dashboard if its source changed, serves the API and dashboard, opens it, and starts the HigherEdJobs and AIR runs. Saved jobs show immediately; new ones appear as they are fetched.
 
 HigherEdJobs runs only look back **14 days**: older listings are skipped, and each search stops
 paging once a whole results page is older than that. Listings with no date are kept. Change it with
@@ -38,40 +38,6 @@ does not keep pulling you back to its desktop. AIR runs without a window because
 verification.
 
 Press `Ctrl+C` to stop.
-
-## Company boards
-
-Early-career software roles from any company's public job board, at no cost and with no account or
-API key. No search engine is used: Google blocks automated searches and its search API is closing.
-
-1. **Company list.** Boards are found from two free public sources, Common Crawl's URL index and the
-   community-maintained [SimplifyJobs new-grad list](https://github.com/SimplifyJobs/New-Grad-Positions).
-   The list refreshes when it is empty or more than 7 days old. Add a company by hand with
-   `.venv/bin/python scripts/add-company.py <board-or-job-url>`.
-2. **Boards read.** Greenhouse, Lever, Ashby and SmartRecruiters public APIs, and Workday's career-site
-   endpoint (unofficial). Every enabled company is checked on every run, one request at a time per
-   ATS with `HEJ_BOARD_DELAY` seconds between requests (default 1). Different ATSes run side by side.
-3. **Kept jobs.** The rules in `backend/app/early_career.py` stand in for the original search queries:
-   a software engineer, developer, backend or full stack title; not senior, staff, principal, lead,
-   manager, intern, or level II and above; early-career wording in the title (new grad, junior, entry
-   level, associate, Software Engineer I) or the description (new grad, 2026/2027 graduate, 0-2
-   years); and a US, remote or unknown location. Sponsorship wording never removes a job: it is
-   labelled like any other job.
-
-The dashboard's **Company boards** tab has a **Ranked** view (by resume fit) and an **All jobs**
-view with ATS, posted-date (including past 24 hours), sponsorship, status and closed filters. The
-existing For you tab stays HigherEdJobs-only.
-
-- A board that answers 403, 429 or a challenge page is not retried: requests to that host stop for
-  the run and its companies go first next time. One blocked Workday tenant skips that tenant; three
-  in a row stop Workday for the run.
-- A failed board keeps its saved jobs open. A job missing from a fully read board is marked closed
-  and hidden (unless you applied), and reopens if it comes back. Rows are never deleted.
-- With about 2,700 companies (1,300 of them Workday), a full run can take hours. Workday is the
-  slowest. The dashboard shows progress and stays usable.
-- Companies on no public list are missed. Add them with `scripts/add-company.py`.
-- `.venv/bin/python scripts/run-boards.py --limit 5` runs a quick check of 5 companies per ATS from
-  the terminal.
 
 ## Start the app for development
 
