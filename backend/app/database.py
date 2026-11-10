@@ -6,13 +6,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .classifier import VERSION, classify
-from .config import SEARCH_GROUPS
-from .parser import JobDraft, normalize_air_description, normalize_hej_description
+from .config import BOARD_SOURCES, SEARCH_GROUPS
+from .parser import JobDraft, normalize_air_description, normalize_ats_description, normalize_hej_description
 from .fit import load_resume, rank_value, score_job, version_for
 from .fuzzy import fuzzy_match
 from .relevance import is_cs_title, is_teaching_title
 from .seniority import VERSION as SENIORITY_VERSION
 from .seniority import flag_role
+from .sources.refs import BoardRef
+
+# Sources ranked by resume fit. AIR is not ranked.
+FIT_SOURCES = ("higheredjobs", *BOARD_SOURCES)
+# Run records a wipe keeps, because Company boards jobs survive wipes.
+KEPT_RUN_SOURCES = ("boards", "discovery")
+# A company whose board answers 404 this many times in a row is disabled.
+MISSING_LIMIT = 5
+
+
+def _marks(values) -> str:
+    return ",".join("?" * len(values))
 
 
 def decode_entities(text: str | None) -> str | None:
@@ -86,6 +98,16 @@ class Database:
           new_jobs INTEGER NOT NULL DEFAULT 0, updated_jobs INTEGER NOT NULL DEFAULT 0,
           errors TEXT NOT NULL DEFAULT '[]'
         );
+        CREATE TABLE IF NOT EXISTS ats_companies (
+          id INTEGER PRIMARY KEY, ats TEXT NOT NULL, slug TEXT NOT NULL,
+          host TEXT NOT NULL DEFAULT '', site TEXT NOT NULL DEFAULT '', name TEXT,
+          discovered_via TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+          last_checked_at TEXT, last_success_at TEXT,
+          consecutive_failures INTEGER NOT NULL DEFAULT 0, last_error TEXT
+        );
+        -- site is NOT NULL so uniqueness holds: SQLite treats NULLs as distinct.
+        CREATE UNIQUE INDEX IF NOT EXISTS ats_companies_identity
+          ON ats_companies(ats, slug COLLATE NOCASE, site COLLATE NOCASE);
         """)
         self._migrate_columns()
         # Config is the source of truth for each group's search; only the enabled choice is the user's.
@@ -114,8 +136,9 @@ class Database:
                 "fit_score": "INTEGER",
                 "fit_details": "TEXT NOT NULL DEFAULT '{}'",
                 "fit_version": "TEXT",
+                "ats_company_id": "INTEGER",
             },
-            "scrape_runs": {"source": "TEXT NOT NULL DEFAULT 'higheredjobs'"},
+            "scrape_runs": {"source": "TEXT NOT NULL DEFAULT 'higheredjobs'", "summary": "TEXT NOT NULL DEFAULT '{}'"},
             "search_groups": {"categories": "TEXT NOT NULL DEFAULT ''", "trusted": "INTEGER NOT NULL DEFAULT 0"},
             "sponsorship_analysis": {"signals": "TEXT NOT NULL DEFAULT '[]'"},
         }
@@ -142,6 +165,7 @@ class Database:
             "CREATE UNIQUE INDEX IF NOT EXISTS jobs_source_url ON jobs(source, source_url) "
             "WHERE source_url IS NOT NULL"
         )
+        self.connection.execute("CREATE INDEX IF NOT EXISTS jobs_ats_company ON jobs(ats_company_id)")
 
     def groups(self):
         return [dict(row) | {"enabled": bool(row["enabled"]), "trusted": bool(row["trusted"])} for row in self.connection.execute("SELECT * FROM search_groups ORDER BY priority")]
@@ -159,8 +183,13 @@ class Database:
         self.connection.commit()
         return cursor.lastrowid
 
-    def finish_run(self, run_id: int, discovered: int, new: int, updated: int, errors: list[dict]):
-        self.connection.execute("UPDATE scrape_runs SET completed_at=?, jobs_discovered=?, new_jobs=?, updated_jobs=?, errors=? WHERE id=?", (utcnow(), discovered, new, updated, json.dumps(errors), run_id))
+    def finish_run(self, run_id: int, discovered: int, new: int, updated: int, errors: list[dict], summary: dict | None = None):
+        self.connection.execute("UPDATE scrape_runs SET completed_at=?, jobs_discovered=?, new_jobs=?, updated_jobs=?, errors=?, summary=COALESCE(?, summary) WHERE id=?", (utcnow(), discovered, new, updated, json.dumps(errors), None if summary is None else json.dumps(summary), run_id))
+        self.connection.commit()
+
+    def update_run_progress(self, run_id: int, discovered: int, new: int, updated: int, summary: dict):
+        """Counts so far for a run still in progress, so the dashboard can show how far it got."""
+        self.connection.execute("UPDATE scrape_runs SET jobs_discovered=?, new_jobs=?, updated_jobs=?, summary=? WHERE id=?", (discovered, new, updated, json.dumps(summary), run_id))
         self.connection.commit()
 
     def close_interrupted_runs(self):
@@ -180,6 +209,7 @@ class Database:
             row = self.connection.execute("SELECT * FROM scrape_runs ORDER BY id DESC LIMIT 1").fetchone()
         if not row: return None
         result = dict(row); result["groups_run"] = json.loads(result["groups_run"]); result["errors"] = json.loads(result["errors"])
+        result["summary"] = json.loads(result.get("summary") or "{}")
         return result
 
     def upsert(self, draft: JobDraft, group_id: str | None = None) -> bool:
@@ -292,20 +322,96 @@ class Database:
         self.connection.commit()
 
     def clear_jobs(self):
-        self.connection.executescript(
-            "DELETE FROM sponsorship_analysis; DELETE FROM job_search_matches; DELETE FROM jobs; DELETE FROM scrape_runs;"
-        )
+        """Wipe HigherEdJobs and AIR jobs. Company boards jobs, with their statuses and notes, and the
+        company list are kept; labels and matches of deleted jobs go with them (ON DELETE CASCADE)."""
+        self.connection.execute(f"DELETE FROM jobs WHERE source NOT IN ({_marks(BOARD_SOURCES)})", BOARD_SOURCES)
+        self.connection.execute(f"DELETE FROM scrape_runs WHERE source NOT IN ({_marks(KEPT_RUN_SOURCES)})", KEPT_RUN_SOURCES)
         self.connection.commit()
 
-    def jobs(self, query: str = "", group: str = "", sponsorship: str = "", application_status: str = "", days: str = "7", sort: str = "newest", page: int = 1, per_page: int = 50, source: str = "", description: str = "", due: str = "", hide: str = "", min_fit: int | None = None):
+    def upsert_company(self, ref: BoardRef, name: str | None, discovered_via: str) -> bool:
+        """Add a board; True when it is new. Slugs match case-insensitively and the first spelling stays."""
+        existing = self.connection.execute(
+            "SELECT id FROM ats_companies WHERE ats=? AND slug=? COLLATE NOCASE AND site=? COLLATE NOCASE",
+            (ref.ats, ref.slug, ref.site),
+        ).fetchone()
+        if existing:
+            if name:
+                self.connection.execute("UPDATE ats_companies SET name=COALESCE(name, ?) WHERE id=?", (name, existing["id"]))
+                self.connection.commit()
+            return False
+        self.connection.execute(
+            "INSERT INTO ats_companies(ats,slug,host,site,name,discovered_via) VALUES (?,?,?,?,?,?)",
+            (ref.ats, ref.slug, ref.host, ref.site, name, discovered_via),
+        )
+        self.connection.commit()
+        return True
+
+    def companies(self, enabled_only: bool = True) -> list[dict]:
+        """Boards in checking order: never checked first, then the longest since a check."""
+        where = "WHERE enabled=1" if enabled_only else ""
+        rows = self.connection.execute(
+            f"SELECT * FROM ats_companies {where} ORDER BY last_checked_at IS NOT NULL, last_checked_at, id"
+        )
+        return [dict(row) for row in rows]
+
+    def record_company_check(self, company_id: int, error: str | None = None, missing: bool = False):
+        now = utcnow()
+        if error is None:
+            self.connection.execute(
+                "UPDATE ats_companies SET last_checked_at=?, last_success_at=?, consecutive_failures=0, last_error=NULL WHERE id=?",
+                (now, now, company_id),
+            )
+        else:
+            self.connection.execute(
+                "UPDATE ats_companies SET last_checked_at=?, consecutive_failures=consecutive_failures+1, last_error=?, "
+                "enabled=CASE WHEN ? AND consecutive_failures+1 >= ? THEN 0 ELSE enabled END WHERE id=?",
+                (now, error, missing, MISSING_LIMIT, company_id),
+            )
+        self.connection.commit()
+
+    def save_board_job(self, company_id: int, draft: JobDraft) -> tuple[int, bool]:
+        job_id, is_new = self.upsert_job(draft)
+        self.connection.execute("UPDATE jobs SET ats_company_id=? WHERE id=?", (company_id, job_id))
+        self.connection.commit()
+        return job_id, is_new
+
+    def known_job_ids(self, company_id: int) -> set[str]:
+        """Jobs of this board whose description is saved, so adapters can skip refetching them."""
+        rows = self.connection.execute(
+            "SELECT source_job_id FROM jobs WHERE ats_company_id=? AND description_status='Complete'", (company_id,)
+        )
+        return {row[0] for row in rows}
+
+    def reconcile_board(self, company_id: int, seen_ids: set[str], complete: bool) -> int:
+        """After a full board fetch, mark this board's saved jobs open or closed by whether the board
+        still lists them; returns how many closed. A partial fetch changes nothing. Rows are never deleted."""
+        if not complete:
+            return 0
+        now, closed = utcnow(), 0
+        rows = self.connection.execute("SELECT id, source_job_id, active FROM jobs WHERE ats_company_id=?", (company_id,)).fetchall()
+        for row in rows:
+            if row["source_job_id"] in seen_ids:
+                self.connection.execute("UPDATE jobs SET active=1, last_seen_at=? WHERE id=?", (now, row["id"]))
+            elif row["active"]:
+                self.connection.execute("UPDATE jobs SET active=0, updated_at=? WHERE id=?", (now, row["id"]))
+                closed += 1
+        self.connection.commit()
+        return closed
+
+    def jobs(self, query: str = "", group: str = "", sponsorship: str = "", application_status: str = "", days: str = "7", sort: str = "newest", page: int = 1, per_page: int = 50, source: str = "", description: str = "", due: str = "", hide: str = "", min_fit: int | None = None, closed: str = ""):
         # HigherEdJobs keyword matches saved before the title filter can be off-field (a chemistry
         # faculty post that mentions "data analysis"); show only CS titles or trusted IT category
         # matches, and never teaching roles.
         clauses, values = ["(j.source != 'higheredjobs' OR j.title IS NULL OR (NOT teaching_title(j.title) AND (cs_title(j.title) OR EXISTS ("
                            "SELECT 1 FROM job_search_matches cm JOIN search_groups cg ON cg.id=cm.search_group_id "
                            "WHERE cm.job_id=j.id AND cg.trusted=1))))"], []
-        if source:
-            clauses.append("j.source=?"); values.append(source)
+        sources = [item for item in source.split(",") if item]
+        if sources:
+            clauses.append(f"j.source IN ({_marks(sources)})"); values.extend(sources)
+        # Company boards jobs the board no longer lists are hidden unless asked for; applied ones stay.
+        if closed != "include":
+            clauses.append(f"(j.source NOT IN ({_marks(BOARD_SOURCES)}) OR j.active=1 OR j.application_status='Applied')")
+            values.extend(BOARD_SOURCES)
         if query:
             clauses.append("fuzzy_match(?, j.title, j.institution, j.location)"); values.append(query)
         if group:
@@ -337,7 +443,11 @@ class Database:
         elif application_status: clauses.append("j.application_status=?"); values.append(application_status)
         elif days != "all" and due != "all": clauses.append("j.application_status != 'Skipped'")
         if days not in ("", "all"):
-            clauses.append("(j.source='air' OR j.posted_date >= date('now', ?))"); values.append(f"-{int(days)} days")
+            # Board jobs without a posting date count from when they were first seen.
+            clauses.append(f"(j.source='air' OR j.posted_date >= date('now', ?) OR (j.posted_date IS NULL "
+                           f"AND j.source IN ({_marks(BOARD_SOURCES)}) AND j.first_seen_at >= date('now', ?)))")
+            window = f"-{int(days)} days"
+            values.extend([window, *BOARD_SOURCES, window])
         # AIR listings carry a due date instead of a posted date. Undated ones stay in the upcoming view.
         if due == "upcoming":
             clauses.append("(j.application_due_date IS NULL OR j.application_due_date >= date('now', 'localtime'))")
@@ -406,7 +516,9 @@ class Database:
         rows = self.connection.execute(query, (VERSION,) if only_outdated else ()).fetchall()
         for row in rows:
             if row["raw_description"]:
-                normalize = normalize_air_description if row["source"] == "air" else normalize_hej_description
+                normalize = (normalize_air_description if row["source"] == "air"
+                             else normalize_ats_description if row["source"] in BOARD_SOURCES
+                             else normalize_hej_description)
                 text = normalize(row["raw_description"])
             else:
                 # Compacted rows lost their HTML. Strip tags only when the stored text still has markup:
@@ -428,7 +540,7 @@ class Database:
         return len(rows)
 
     def _store_fit(self, job_id: int):
-        """Score a HigherEdJobs job against the resume. Reads the stored sponsorship status and
+        """Score a HigherEdJobs or Company boards job against the resume. Reads the stored sponsorship status and
         seniority flags, so it runs after both are saved. AIR jobs are not ranked in For you."""
         if self.resume is None:
             return
@@ -437,7 +549,7 @@ class Database:
             "FROM jobs j LEFT JOIN sponsorship_analysis sa ON sa.job_id=j.id WHERE j.id=?",
             (job_id,),
         ).fetchone()
-        if row["source"] != "higheredjobs":
+        if row["source"] not in FIT_SOURCES:
             return
         result = score_job(row["title"], row["normalized_description"], row["status"],
                            json.loads(row["seniority_flags"] or "[]"), self.resume)
@@ -447,7 +559,7 @@ class Database:
         )
 
     def rescore_fit(self, only_outdated: bool = False) -> int:
-        """Score saved HigherEdJobs jobs with the current rules and resume; editing the resume
+        """Score saved ranked jobs (FIT_SOURCES) with the current rules and resume; editing the resume
         changes the version, so the next startup rescores every job."""
         if self.resume is None:
             # A deleted or broken resume must not leave the last resume's ranking on screen.
@@ -457,10 +569,10 @@ class Database:
             )
             self.connection.commit()
             return cursor.rowcount
-        query = "SELECT id FROM jobs WHERE source='higheredjobs'"
+        query = f"SELECT id FROM jobs WHERE source IN ({_marks(FIT_SOURCES)})"
         if only_outdated:
             query += " AND (fit_version IS NULL OR fit_version != ?)"
-        rows = self.connection.execute(query, (version_for(self.resume),) if only_outdated else ()).fetchall()
+        rows = self.connection.execute(query, (*FIT_SOURCES, *((version_for(self.resume),) if only_outdated else ()))).fetchall()
         for row in rows:
             self._store_fit(row["id"])
         self.connection.commit()

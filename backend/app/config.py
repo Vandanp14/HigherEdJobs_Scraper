@@ -7,11 +7,16 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
+# ATS boards read by Company boards. Each is also the `source` of the jobs it saves.
+BOARD_SOURCES = ("greenhouse", "lever", "ashby", "workday", "smartrecruiters")
+
 
 @dataclass(frozen=True)
 class Settings:
     database: Path = ROOT / os.getenv("HEJ_DATABASE", "data/jobs.sqlite3")
     request_delay: float = max(0.5, float(os.getenv("HEJ_REQUEST_DELAY", "2")))
+    # Seconds between requests to one ATS (Company boards). Different ATSes run side by side.
+    board_delay: float = max(0.5, float(os.getenv("HEJ_BOARD_DELAY", "1")))
     # HigherEdJobs can invalidate a visible, manually verified session when the
     # follow-up search uses a headless browser. Default to visible operation so
     # any access check remains actionable rather than becoming silent failures.

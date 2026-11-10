@@ -1,0 +1,397 @@
+{
+ "offset": 0,
+ "limit": 3,
+ "totalFound": 206,
+ "content": [
+  {
+   "id": "3743990016747156",
+   "name": " Physics Division Undergraduate Internship - Summer 2027",
+   "uuid": "977c2450-7a1e-439d-adec-90e835ecd7ae",
+   "jobAdId": "1ec951e9-e61b-40b7-b696-dd4d0e2c7612",
+   "defaultJobAd": true,
+   "refNumber": "REF9099D",
+   "company": {
+    "identifier": "LLNL",
+    "name": "LLNL"
+   },
+   "releasedDate": "2026-11-10T01:04:13.624Z",
+   "location": {
+    "city": "Livermore",
+    "region": "CA",
+    "country": "us",
+    "remote": false,
+    "hybrid": true,
+    "hybridDescription": "See job listing for details",
+    "latitude": "37.6818688",
+    "longitude": "-121.7684732",
+    "fullLocation": "Livermore, CA, United States"
+   },
+   "industry": {
+    "id": "research",
+    "label": "Research"
+   },
+   "department": {},
+   "function": {
+    "id": "science",
+    "label": "Science"
+   },
+   "typeOfEmployment": {
+    "id": "intern",
+    "label": "Intern"
+   },
+   "experienceLevel": {
+    "id": "internship",
+    "label": "Internship"
+   },
+   "customField": [
+    {
+     "fieldId": "5f482a5514424210633b6164",
+     "fieldLabel": "Organization",
+     "valueId": "Physical and Life Sciences",
+     "valueLabel": "Physical and Life Sciences"
+    },
+    {
+     "fieldId": "5f4585dd14424210633b6162",
+     "fieldLabel": "Brands",
+     "valueId": "default",
+     "valueLabel": "LLNL"
+    },
+    {
+     "fieldId": "5fa4c4ac8dff831cf540d274",
+     "fieldLabel": "Employee Referral Bonus",
+     "valueId": "1ae60b83-1db2-455d-b97f-65390a52b76b",
+     "valueLabel": "Not applicable"
+    },
+    {
+     "fieldId": "5f4825d673fa282066ed7e62",
+     "fieldLabel": "Job Code 1",
+     "valueId": "705.1",
+     "valueLabel": "705.1 Under Grad Student"
+    },
+    {
+     "fieldId": "5fa4c0992a1c2525a4836aec",
+     "fieldLabel": "Appointment Code",
+     "valueId": "f01e7a65-a64d-4393-a25a-a7bbbf0a7f90",
+     "valueLabel": "ST Temporary Student Intern"
+    },
+    {
+     "fieldId": "61fed17773e44c7f482a56a6",
+     "fieldLabel": "Pre-Placement Medical Exam",
+     "valueId": "122434ab-441e-4761-a8fe-ec85a222bdc5",
+     "valueLabel": "Not applicable"
+    },
+    {
+     "fieldId": "5f48288273fa282066ed7e63",
+     "fieldLabel": "Category",
+     "valueId": "87baf013-e70d-4950-bf3c-f6fbf8375375",
+     "valueLabel": "Students"
+    },
+    {
+     "fieldId": "5fa4bed92a1c2525a4836aeb",
+     "fieldLabel": "Internal Only",
+     "valueId": "7beb8635-2c97-4d8c-bc24-e6c360bcfd9c",
+     "valueLabel": "No"
+    },
+    {
+     "fieldId": "COUNTRY",
+     "fieldLabel": "Country/Region",
+     "valueId": "us",
+     "valueLabel": "United States"
+    },
+    {
+     "fieldId": "5f48428273fa282066ed7e65",
+     "fieldLabel": "Payroll Account",
+     "valueId": "9855",
+     "valueLabel": "9855 Physics"
+    },
+    {
+     "fieldId": "5f48412d14424210633b6166",
+     "fieldLabel": "Pre-Employment Drug Test",
+     "valueId": "3800b33d-2b7a-446b-b3bf-7482f9e1879d",
+     "valueLabel": "Required for external applicant(s) selected for this position (includes testing for use of marijuana)"
+    },
+    {
+     "fieldId": "5f482bd914424210633b6165",
+     "fieldLabel": "Security Clearance",
+     "valueId": "bc31c154-33c7-4402-aa7a-76029c076f7b",
+     "valueLabel": "None/Position does not require US citizenship (assignments longer than 179 days require a federal background investigation)"
+    },
+    {
+     "fieldId": "5f482af273fa282066ed7e64",
+     "fieldLabel": "Position Type",
+     "valueId": "5e392ae9-8f09-4e6d-a509-06e8ff51ef46",
+     "valueLabel": "Student Intern"
+    }
+   ],
+   "visibility": "PUBLIC",
+   "ref": "https://api.smartrecruiters.com/v1/companies/LLNL/postings/3743990016747156",
+   "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+   }
+  },
+  {
+   "id": "3743990016747046",
+   "name": "Business Undergraduate Intern - Summer 2027",
+   "uuid": "97985205-5541-4abf-8262-8c34c6557a50",
+   "jobAdId": "f8da0495-5e53-468f-842a-41e3f46f594e",
+   "defaultJobAd": true,
+   "refNumber": "REF9132O",
+   "company": {
+    "identifier": "LLNL",
+    "name": "LLNL"
+   },
+   "releasedDate": "2026-11-10T01:00:51.930Z",
+   "location": {
+    "city": "Livermore",
+    "region": "CA",
+    "country": "us",
+    "remote": false,
+    "hybrid": true,
+    "hybridDescription": "",
+    "latitude": "37.6818688",
+    "longitude": "-121.7684732",
+    "fullLocation": "Livermore, CA, United States"
+   },
+   "industry": {
+    "id": "research",
+    "label": "Research"
+   },
+   "department": {},
+   "function": {
+    "id": "business_development",
+    "label": "Business Development"
+   },
+   "typeOfEmployment": {
+    "id": "intern",
+    "label": "Intern"
+   },
+   "experienceLevel": {
+    "id": "internship",
+    "label": "Internship"
+   },
+   "customField": [
+    {
+     "fieldId": "5f482a5514424210633b6164",
+     "fieldLabel": "Organization",
+     "valueId": "Business",
+     "valueLabel": "Business"
+    },
+    {
+     "fieldId": "5f4585dd14424210633b6162",
+     "fieldLabel": "Brands",
+     "valueId": "default",
+     "valueLabel": "LLNL"
+    },
+    {
+     "fieldId": "5fa4c4ac8dff831cf540d274",
+     "fieldLabel": "Employee Referral Bonus",
+     "valueId": "1ae60b83-1db2-455d-b97f-65390a52b76b",
+     "valueLabel": "Not applicable"
+    },
+    {
+     "fieldId": "5f4825d673fa282066ed7e62",
+     "fieldLabel": "Job Code 1",
+     "valueId": "705.1",
+     "valueLabel": "705.1 Under Grad Student"
+    },
+    {
+     "fieldId": "5fa4c0992a1c2525a4836aec",
+     "fieldLabel": "Appointment Code",
+     "valueId": "f01e7a65-a64d-4393-a25a-a7bbbf0a7f90",
+     "valueLabel": "ST Temporary Student Intern"
+    },
+    {
+     "fieldId": "61fed17773e44c7f482a56a6",
+     "fieldLabel": "Pre-Placement Medical Exam",
+     "valueId": "122434ab-441e-4761-a8fe-ec85a222bdc5",
+     "valueLabel": "Not applicable"
+    },
+    {
+     "fieldId": "5f48288273fa282066ed7e63",
+     "fieldLabel": "Category",
+     "valueId": "87baf013-e70d-4950-bf3c-f6fbf8375375",
+     "valueLabel": "Students"
+    },
+    {
+     "fieldId": "5fa4bed92a1c2525a4836aeb",
+     "fieldLabel": "Internal Only",
+     "valueId": "7beb8635-2c97-4d8c-bc24-e6c360bcfd9c",
+     "valueLabel": "No"
+    },
+    {
+     "fieldId": "COUNTRY",
+     "fieldLabel": "Country/Region",
+     "valueId": "us",
+     "valueLabel": "United States"
+    },
+    {
+     "fieldId": "5f48428273fa282066ed7e65",
+     "fieldLabel": "Payroll Account",
+     "valueId": "9518",
+     "valueLabel": "9518 Business AD Office"
+    },
+    {
+     "fieldId": "5f48412d14424210633b6166",
+     "fieldLabel": "Pre-Employment Drug Test",
+     "valueId": "3800b33d-2b7a-446b-b3bf-7482f9e1879d",
+     "valueLabel": "Required for external applicant(s) selected for this position (includes testing for use of marijuana)"
+    },
+    {
+     "fieldId": "5f482bd914424210633b6165",
+     "fieldLabel": "Security Clearance",
+     "valueId": "b66fa8f3-6a48-481e-a8b5-5393f6430cfe",
+     "valueLabel": "None required. However, due to federal requirements applicable to this position, U.S. citizenship is required."
+    },
+    {
+     "fieldId": "5f482af273fa282066ed7e64",
+     "fieldLabel": "Position Type",
+     "valueId": "5e392ae9-8f09-4e6d-a509-06e8ff51ef46",
+     "valueLabel": "Student Intern"
+    }
+   ],
+   "visibility": "PUBLIC",
+   "ref": "https://api.smartrecruiters.com/v1/companies/LLNL/postings/3743990016747046",
+   "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+   }
+  },
+  {
+   "id": "3743990016747036",
+   "name": "Physics Division Graduate Internship - Summer 2027",
+   "uuid": "88ec1b6d-678d-419f-8391-a1297d41d3d3",
+   "jobAdId": "d49601a8-8ca0-4681-bde0-dce958d3f5b6",
+   "defaultJobAd": true,
+   "refNumber": "REF9098N",
+   "company": {
+    "identifier": "LLNL",
+    "name": "LLNL"
+   },
+   "releasedDate": "2026-11-10T00:58:49.621Z",
+   "location": {
+    "city": "Livermore",
+    "region": "CA",
+    "country": "us",
+    "remote": false,
+    "hybrid": true,
+    "hybridDescription": "See job listing for details",
+    "latitude": "37.6818688",
+    "longitude": "-121.7684732",
+    "fullLocation": "Livermore, CA, United States"
+   },
+   "industry": {
+    "id": "research",
+    "label": "Research"
+   },
+   "department": {},
+   "function": {
+    "id": "science",
+    "label": "Science"
+   },
+   "typeOfEmployment": {
+    "id": "intern",
+    "label": "Intern"
+   },
+   "experienceLevel": {
+    "id": "internship",
+    "label": "Internship"
+   },
+   "customField": [
+    {
+     "fieldId": "5f482a5514424210633b6164",
+     "fieldLabel": "Organization",
+     "valueId": "Physical and Life Sciences",
+     "valueLabel": "Physical and Life Sciences"
+    },
+    {
+     "fieldId": "5f4585dd14424210633b6162",
+     "fieldLabel": "Brands",
+     "valueId": "default",
+     "valueLabel": "LLNL"
+    },
+    {
+     "fieldId": "5fa4c4ac8dff831cf540d274",
+     "fieldLabel": "Employee Referral Bonus",
+     "valueId": "1ae60b83-1db2-455d-b97f-65390a52b76b",
+     "valueLabel": "Not applicable"
+    },
+    {
+     "fieldId": "5f4825d673fa282066ed7e62",
+     "fieldLabel": "Job Code 1",
+     "valueId": "705.2",
+     "valueLabel": "705.2 Grad Student R&D/Technical"
+    },
+    {
+     "fieldId": "5fa4c0992a1c2525a4836aec",
+     "fieldLabel": "Appointment Code",
+     "valueId": "f01e7a65-a64d-4393-a25a-a7bbbf0a7f90",
+     "valueLabel": "ST Temporary Student Intern"
+    },
+    {
+     "fieldId": "61fed17773e44c7f482a56a6",
+     "fieldLabel": "Pre-Placement Medical Exam",
+     "valueId": "122434ab-441e-4761-a8fe-ec85a222bdc5",
+     "valueLabel": "Not applicable"
+    },
+    {
+     "fieldId": "5f48288273fa282066ed7e63",
+     "fieldLabel": "Category",
+     "valueId": "87baf013-e70d-4950-bf3c-f6fbf8375375",
+     "valueLabel": "Students"
+    },
+    {
+     "fieldId": "5fa4bed92a1c2525a4836aeb",
+     "fieldLabel": "Internal Only",
+     "valueId": "7beb8635-2c97-4d8c-bc24-e6c360bcfd9c",
+     "valueLabel": "No"
+    },
+    {
+     "fieldId": "COUNTRY",
+     "fieldLabel": "Country/Region",
+     "valueId": "us",
+     "valueLabel": "United States"
+    },
+    {
+     "fieldId": "5f4842b814424210633b6168",
+     "fieldLabel": "Job Code 2",
+     "valueId": "712.0",
+     "valueLabel": "712.0 Intern Exempt"
+    },
+    {
+     "fieldId": "5f48428273fa282066ed7e65",
+     "fieldLabel": "Payroll Account",
+     "valueId": "9855",
+     "valueLabel": "9855 Physics"
+    },
+    {
+     "fieldId": "5f48412d14424210633b6166",
+     "fieldLabel": "Pre-Employment Drug Test",
+     "valueId": "3800b33d-2b7a-446b-b3bf-7482f9e1879d",
+     "valueLabel": "Required for external applicant(s) selected for this position (includes testing for use of marijuana)"
+    },
+    {
+     "fieldId": "5f482bd914424210633b6165",
+     "fieldLabel": "Security Clearance",
+     "valueId": "bc31c154-33c7-4402-aa7a-76029c076f7b",
+     "valueLabel": "None/Position does not require US citizenship (assignments longer than 179 days require a federal background investigation)"
+    },
+    {
+     "fieldId": "5f482af273fa282066ed7e64",
+     "fieldLabel": "Position Type",
+     "valueId": "5e392ae9-8f09-4e6d-a509-06e8ff51ef46",
+     "valueLabel": "Student Intern"
+    }
+   ],
+   "visibility": "PUBLIC",
+   "ref": "https://api.smartrecruiters.com/v1/companies/LLNL/postings/3743990016747036",
+   "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+   }
+  }
+ ]
+}
