@@ -21,7 +21,7 @@ class Settings:
     timeout_ms: int = int(os.getenv("HEJ_TIMEOUT_MS", "30000"))
     # HigherEdJobs listings posted longer ago than this are skipped, and a search stops paging once a
     # whole results page is older. 0 means no limit.
-    max_age_days: int = max(0, int(os.getenv("HEJ_MAX_AGE_DAYS", "14")))
+    max_age_days: int = max(0, int(os.getenv("HEJ_MAX_AGE_DAYS", "10")))
     # Master resume (JSON Resume layout) that For you ranks jobs against. It stays on this device.
     resume: Path = ROOT / os.getenv("HEJ_RESUME", "data/resume.json")
     state_path: Path = ROOT / "data/browser-state.json"

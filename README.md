@@ -12,7 +12,7 @@ The dashboard uses port 8000, or the first free port up to 8010 if another proje
 
 Saved jobs show immediately. Click **Run HigherEdJobs** or **Run AIR Career Center** to fetch listings; new ones appear as they are fetched. Jobs already saved with a description are skipped, so a later run the same day only opens new listings. Statuses and notes are kept; jobs that failed before are retried.
 
-HigherEdJobs runs only look back **14 days**: older listings are skipped, and each search stops
+HigherEdJobs runs only look back **10 days**: older listings are skipped, and each search stops
 paging once a whole results page is older than that. Listings with no date are kept. Change it with
 `HEJ_MAX_AGE_DAYS` in `.env` (`0` means no limit). AIR is a single small board and is always read in full.
 
