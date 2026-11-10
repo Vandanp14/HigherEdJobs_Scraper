@@ -6,14 +6,14 @@ import time
 
 from ..early_career import keep_job, location_allowed, title_candidate
 from ..progress import elapsed, report
-from . import ashby, greenhouse, lever, workday
+from . import ashby, greenhouse, lever, smartrecruiters, workday
 from .client import BoardBlocked, BoardClient, BoardMissing
 from .discovery import companies_stale, refresh_companies
 
 SOURCE = "boards"
 LABEL = "Boards"
 ADAPTERS = {"greenhouse": greenhouse.fetch_board, "lever": lever.fetch_board, "ashby": ashby.fetch_board,
-            "workday": workday.fetch_board}
+            "workday": workday.fetch_board, "smartrecruiters": smartrecruiters.fetch_board}
 # Workday tenants are separate hosts, so one block skips one tenant; this many in a row stops Workday.
 WORKDAY_BLOCK_LIMIT = 3
 ERROR_LIMIT = 200
