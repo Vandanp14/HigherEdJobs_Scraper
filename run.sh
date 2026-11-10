@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Serve the dashboard and fetch HigherEdJobs and AIR listings, keeping saved jobs.
+# Serve the dashboard and fetch HigherEdJobs, AIR and Company boards listings, keeping saved jobs.
 # Job pages already saved are skipped, so a second run the same day only opens new listings.
 # --no-scrape only serves the saved jobs (see ./view.sh).
 set -euo pipefail
@@ -59,14 +59,17 @@ if [ "$SCRAPE" = false ]; then
   wait $SERVER
   exit
 fi
-say "Starting AIR Career Center and HigherEdJobs runs side by side. Progress lines follow."
+say "Starting AIR Career Center, HigherEdJobs and Company boards runs side by side. Progress lines follow."
+say "Company boards checks every saved company board and can take hours; the dashboard stays usable meanwhile."
 say "If HigherEdJobs asks for verification you'll hear a sound; solve it in the browser window it opened."
 (
   curl -s -X POST "$URL/api/runs/air" >/dev/null &
   AIR=$!
   curl -s -X POST -H 'content-type: application/json' -d '{}' "$URL/api/runs" >/dev/null &
   HEJ=$!
-  wait "$AIR" "$HEJ" || true
+  curl -s -X POST "$URL/api/runs/boards" >/dev/null &
+  BOARDS=$!
+  wait "$AIR" "$HEJ" "$BOARDS" || true
   say "All runs finished. Review jobs at $URL — Ctrl+C here when done."
 ) &
 RUNS=$!

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Morning routine: wipe saved jobs, then run a fresh scrape. Use ./run.sh alone to keep saved jobs.
+# Morning routine: wipe saved HigherEdJobs and AIR jobs, then run a fresh scrape. Use ./run.sh alone to keep saved jobs.
 set -euo pipefail
 cd "$(dirname "$0")"
 
