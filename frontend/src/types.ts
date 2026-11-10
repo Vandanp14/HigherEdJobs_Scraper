@@ -57,3 +57,6 @@ export const signalClass = (signal: string) => ({
 export const toggleItem = (list: string[], item: string) => (list.includes(item)
   ? list.filter(value => value !== item)
   : [...list, item]).join(',');
+
+// One job board's saved data, from GET /api/data/sources.
+export type DataSource = { source: string; name: string; jobs: number; applied: number; with_notes: number };

@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ExternalLink, LoaderCircle, Play, RefreshCw, Search, Settings2 } from 'lucide-react';
+import { ChevronDown, Database, ExternalLink, LoaderCircle, Play, RefreshCw, Search, Settings2 } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
+import { request } from './api';
+import { DataPanel } from './DataPanel';
 import { ForYouBoard } from './ForYouBoard';
 import { forYouDefaults } from './forYou';
 import { seniorityLabels, signalClass, sponsorshipLabels, type Filters, type Job, type ResumeState } from './types';
 
 type Group = { id: string; name: string; query: string; categories: string; enabled: boolean };
 type Source = { id: string; name: string; description: string; supports_queries: boolean; last_run?: Run | null };
+type RunKind = 'higheredjobs' | 'air' | 'reanalyze' | 'fresh';
 type Board = 'foryou' | 'higheredjobs' | 'air';
 // Each board keeps its own filters: HigherEdJobs is dated by posting, AIR by application due date.
 // Roles a new-grad BS holder does not qualify for start hidden on the source boards; For you hides nothing.
@@ -25,11 +28,6 @@ type Run = {
   errors: { source?: string; group?: string; listing_url?: string; error: string }[];
 };
 
-const request = async (path: string, init?: RequestInit) => {
-  const response = await fetch('/api' + path, init);
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
-};
 const parseSignals = (value: string | undefined): string[] => {
   try {
     return value ? JSON.parse(value) : [];
@@ -49,11 +47,12 @@ function App() {
   const [resume, setResume] = useState<ResumeState | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [activeRun, setActiveRun] = useState<'higheredjobs' | 'air' | 'reanalyze' | null>(null);
+  const [activeRun, setActiveRun] = useState<RunKind | null>(null);
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [showSources, setShowSources] = useState(false);
+  const [showData, setShowData] = useState(false);
   const [notice, setNotice] = useState('');
   const [externalRun, setExternalRun] = useState(false);
   const [board, setBoard] = useState<Board>('foryou');
@@ -118,7 +117,7 @@ function App() {
         setSources(sourceList);
         const running = sourceList.some(source => source.last_run && !source.last_run.completed_at);
         if (running || externalRun) await load();
-        if (running && !externalRun) setNotice('A run started from the terminal is in progress — new jobs appear automatically.');
+        if (running && !externalRun) setNotice('A run started elsewhere is in progress — new jobs appear automatically.');
         if (!running && externalRun) {
           const errors = sourceList.flatMap(source => source.last_run?.errors ?? []);
           const blocked = errors.some(error => error.error.includes('access check blocked'));
@@ -136,7 +135,7 @@ function App() {
     return () => window.clearInterval(timer);
   }, [activeRun, externalRun, parameters]);
 
-  const beginRun = (run: 'higheredjobs' | 'air' | 'reanalyze') => {
+  const beginRun = (run: RunKind) => {
     setActiveRun(run);
     setRunStartedAt(Date.now());
     setElapsedSeconds(0);
@@ -183,6 +182,40 @@ function App() {
       await load();
     } catch (error) {
       setNotice(`AIR run failed: ${(error as Error).message}`);
+    } finally {
+      setLoading(false);
+      finishRun();
+    }
+  };
+  // Clear everything, then run both scrapers at once. If the clear is refused, nothing runs.
+  const freshRun = async () => {
+    if (activeRun || externalRun) return;
+    beginRun('fresh');
+    setLoading(true);
+    setNotice('Clearing saved data…');
+    try {
+      await request('/data', { method: 'DELETE' });
+    } catch (error) {
+      setNotice(`Fresh run stopped: ${(error as Error).message}`);
+      setLoading(false);
+      finishRun();
+      return;
+    }
+    setPage(1);
+    setNotice('Data cleared. AIR and HigherEdJobs are running. Keep this tab open; do not refresh it.');
+    const [air, higheredjobs] = await Promise.allSettled([
+      request('/runs/air', { method: 'POST' }) as Promise<Run>,
+      request('/runs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }) as Promise<Run>,
+    ]);
+    const summary = (name: string, outcome: PromiseSettledResult<Run>) => {
+      if (outcome.status === 'rejected') return `${name} failed: ${(outcome.reason as Error).message}`;
+      const { jobs_discovered, new_jobs, errors } = outcome.value;
+      if (errors?.some(error => error.error.includes('access check blocked'))) return `${name} verification was not completed in time`;
+      return `${name}: ${jobs_discovered} listings found (${new_jobs} new)${errors?.length ? `, ${errors.length} error(s)` : ''}`;
+    };
+    try {
+      setNotice(`Fresh run complete. ${summary('AIR', air)}. ${summary('HigherEdJobs', higheredjobs)}.`);
+      await load();
     } finally {
       setLoading(false);
       finishRun();
@@ -235,14 +268,21 @@ function App() {
       <header className="topbar">
         <div className="brand"><span>HEJ</span><div><h1>Job review queue</h1><small>Sponsorship wording for HigherEdJobs and AIR roles · data stays on this device</small></div></div>
         <div className="header-actions">
-          <button className="button secondary" aria-expanded={showSources} onClick={() => setShowSources(!showSources)}><Settings2 size={15} /> Search sources</button>
+          <button className="button secondary" aria-expanded={showSources} onClick={() => { setShowSources(!showSources); setShowData(false); }}><Settings2 size={15} /> Search sources</button>
+          <button className="button secondary" aria-expanded={showData} onClick={() => { setShowData(!showData); setShowSources(false); }}><Database size={15} /> Data</button>
           <button className="button secondary" disabled={Boolean(activeRun)} onClick={reanalyze}>{activeRun === 'reanalyze' ? <LoaderCircle className="animate-spin" size={15} /> : <RefreshCw size={15} />} {activeRun === 'reanalyze' ? `Re-analyzing · ${elapsedLabel}` : 'Re-analyze saved jobs'}</button>
           <button className="button secondary air-button" disabled={Boolean(activeRun) || externalRun} onClick={runAir}>{activeRun === 'air' ? <LoaderCircle className="animate-spin" size={14} /> : <Play size={14} fill="currentColor" />} {activeRun === 'air' ? `Refreshing · ${elapsedLabel}` : 'Run AIR Career Center'}</button>
           <button className="button primary" disabled={Boolean(activeRun) || externalRun} onClick={runHigherEdJobs}>{activeRun === 'higheredjobs' ? <LoaderCircle className="animate-spin" size={14} /> : <Play size={14} fill="currentColor" />} {activeRun === 'higheredjobs' ? `Searching · ${elapsedLabel}` : 'Run HigherEdJobs'}</button>
         </div>
       </header>
       {notice && <p className="run-notice" role="status">{notice}</p>}
-      {activeRun && <p className="run-progress" role="status"><LoaderCircle className="animate-spin" size={15} /><span><b>{activeRun === 'higheredjobs' ? 'HigherEdJobs search' : activeRun === 'air' ? 'AIR refresh' : 'Description re-analysis'} in progress</b><small>Elapsed {elapsedLabel}. Keep this tab open; do not refresh while it runs.</small></span></p>}
+      {activeRun && <p className="run-progress" role="status"><LoaderCircle className="animate-spin" size={15} /><span><b>{activeRun === 'higheredjobs' ? 'HigherEdJobs search' : activeRun === 'air' ? 'AIR refresh' : activeRun === 'fresh' ? 'Fresh run (AIR + HigherEdJobs)' : 'Description re-analysis'} in progress</b><small>Elapsed {elapsedLabel}. Keep this tab open; do not refresh while it runs.</small></span></p>}
+      {showData && <DataPanel
+        busy={Boolean(activeRun) || externalRun}
+        onClose={() => setShowData(false)}
+        onChanged={async message => { setPage(1); setExpanded(null); await load(); setNotice(message); }}
+        onFreshRun={freshRun}
+      />}
       {showSources && <section className="sources">
         <div className="section-title"><div><h2>Search sources</h2><p>Run AIR independently or enable the keyword groups used by HigherEdJobs.</p></div><button className="icon-button" aria-label="Close search sources" onClick={() => setShowSources(false)}>×</button></div>
         <div className="source-grid">
