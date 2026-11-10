@@ -325,6 +325,62 @@ def test_search_url_adds_only_missing_param(tmp_path):
     assert gotos[-1].count("NumJobs=") == 1 and gotos[-1].count("SortBy=1") == 1
 
 
+def test_search_url_replaces_wrong_sort_and_page_size(tmp_path):
+    gotos = _search_gotos(tmp_path, "https://www.higheredjobs.com/search/advanced_action.cfm?Keyword=x&SortBy=4&NumJobs=25")
+    query = gotos[-1].split("?", 1)[1].split("&")
+    assert query.count("SortBy=1") == 1 and query.count("NumJobs=100") == 1
+    assert not any(part in ("SortBy=4", "NumJobs=25") for part in query)
+
+
+def test_search_url_with_sortby_10_is_not_treated_as_date_sorted(tmp_path):
+    gotos = _search_gotos(tmp_path, "https://www.higheredjobs.com/search/advanced_action.cfm?NumJobs=100&SortBy=10")
+    assert len(gotos) == 2
+    assert gotos[-1].split("?", 1)[1].split("&").count("SortBy=1") == 1 and "SortBy=10" not in gotos[-1]
+
+
+def test_date_sorted_url_preserves_repeated_params():
+    fixed = scraper._date_sorted_url("https://h/s.cfm?PosType=1&PosType=2&Keyword=&SortBy=4")
+    query = fixed.split("?", 1)[1].split("&")
+    assert query.count("PosType=1") == 1 and query.count("PosType=2") == 1 and "Keyword=" in query
+    assert query.count("SortBy=1") == 1 and query.count("NumJobs=100") == 1
+    assert scraper._date_sorted_url(fixed) == fixed
+
+
+def test_next_page_landing_without_sort_is_redirected_before_parsing(tmp_path, monkeypatch):
+    events = []
+    sorted_url = "https://www.higheredjobs.com/search/advanced_action.cfm?Keyword=x&NumJobs=100&SortBy=1"
+
+    class Next(FakeLocator):
+        def __init__(self, page): self.page = page
+        async def count(self): return int("page2" not in events)
+        async def is_visible(self): return "page2" not in events
+        async def click(self):
+            events.append("page2"); self.page.url = "https://www.higheredjobs.com/search/advanced_action.cfm?Keyword=x&NumJobs=100&StartRow=101"
+
+    class Page(FakePage):
+        async def goto(self, url, wait_until=None):
+            events.append(("goto", url)); self.url = url
+        def get_by_role(self, role, name=None):
+            return Next(self) if name == "Next page" else (_Click(self))
+
+    class _Click(FakeLocator):
+        def __init__(self, page): self.page = page
+        async def click(self): self.page.url = sorted_url
+
+    class Context(FakeContext):
+        async def new_page(self): return Page(self)
+
+    def parse(html, url, now):
+        events.append(("parse", url)); return []
+
+    monkeypatch.setattr(scraper, "parse_results", parse)
+    job_scraper = scraper.HigherEdJobsScraper(Database(tmp_path / "jobs.sqlite3"), replace(Settings(), request_delay=0, headless=True, max_age_days=14))
+    asyncio.run(job_scraper._run_group(Context(), {"id": "data", "name": "Data", "query": "q"}, {}, []))
+    after_click = events[events.index("page2") + 1:]
+    assert after_click[0][0] == "goto" and "SortBy=1" in after_click[0][1] and "StartRow=101" in after_click[0][1]
+    assert after_click[1][0] == "parse" and "SortBy=1" in after_click[1][1]
+
+
 def test_run_result_is_for_its_own_source(tmp_path, monkeypatch):
     # A fresh run runs both scrapers at once; the other source's newer run must not be returned.
     monkeypatch.setattr(FakeContext, "close", lambda self: _value(None), raising=False)

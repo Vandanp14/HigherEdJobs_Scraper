@@ -1,6 +1,7 @@
 import asyncio
 import time
 from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from playwright.async_api import BrowserContext, async_playwright
 
@@ -22,6 +23,15 @@ from .progress import elapsed, report
 from .relevance import is_cs_title, is_teaching_title
 
 HEJ = "HigherEdJobs"
+
+
+def _date_sorted_url(url: str) -> str:
+    """Return the search URL with 100 results per page, newest first; other parameters are kept as they are."""
+    parts = urlsplit(url)
+    pairs = parse_qsl(parts.query, keep_blank_values=True)
+    if [value for key, value in pairs if key == "NumJobs"] == ["100"] and [value for key, value in pairs if key == "SortBy"] == ["1"]: return url
+    query = [(key, value) for key, value in pairs if key not in ("NumJobs", "SortBy")]
+    return urlunsplit(parts._replace(query=urlencode(query + [("NumJobs", "100"), ("SortBy", "1")])))
 
 
 class HigherEdJobsScraper:
@@ -115,6 +125,10 @@ class HigherEdJobsScraper:
                 next_link=page.get_by_role("link", name="Next page")
                 if await next_link.count() and await next_link.is_visible():
                     await next_link.click(); await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page); await asyncio.sleep(self.settings.request_delay)
+                    # The age cutoff stops paging, so every page must stay date sorted.
+                    fixed = _date_sorted_url(page.url)
+                    if fixed != page.url:
+                        await page.goto(fixed, wait_until="domcontentloaded"); await self._ensure_access(page)
                     page_number += 1
                 else: break
         old_note = f", {skipped_old} older than {days} days skipped" if skipped_old else ""
@@ -130,9 +144,9 @@ class HigherEdJobsScraper:
         await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page)
         # 100 results per page instead of 25 keeps the large category searches to a few page loads, and
         # SortBy=1 orders them newest first so paging can stop at the age limit.
-        missing = [param for param in ("NumJobs=100", "SortBy=1") if param not in page.url]
-        if missing:
-            await page.goto(page.url + ("&" if "?" in page.url else "?") + "&".join(missing), wait_until="domcontentloaded"); await self._ensure_access(page)
+        fixed = _date_sorted_url(page.url)
+        if fixed != page.url:
+            await page.goto(fixed, wait_until="domcontentloaded"); await self._ensure_access(page)
 
     async def _tabs_for(self, context: BrowserContext):
         if context not in self._tabs:
