@@ -1,6 +1,7 @@
 """Pieces every board adapter shares. An adapter turns one company's board into JobDrafts."""
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 from ..parser import JobDraft, ParseError, normalize_ats_description
 
@@ -12,6 +13,18 @@ class BoardFetch:
     drafts: list[JobDraft] = field(default_factory=list)
     seen_ids: set[str] = field(default_factory=set)
     complete: bool = True
+
+
+def safe_url(url) -> str | None:
+    """The URL when it is plain http(s), else None. Board responses are untrusted and their URLs
+    become dashboard links, where a `javascript:` URL would run when clicked."""
+    if not isinstance(url, str):
+        return None
+    try:
+        parts = urlsplit(url.strip())
+    except ValueError:
+        return None
+    return url.strip() if parts.scheme in ("http", "https") and parts.hostname else None
 
 
 def job_id(company: dict, ats_id) -> str:
@@ -54,8 +67,14 @@ def required(job: dict, keys: tuple[str, ...], ats: str):
     return [job[key] for key in keys]
 
 
-def draft(company: dict, ats: str, ats_id, title: str, url: str, raw: str | None, **fields) -> JobDraft:
+def draft(company: dict, ats: str, ats_id, title: str, url, raw: str | None, fallback_url: str | None = None, **fields) -> JobDraft:
+    """`url` is used only when it is http(s); otherwise `fallback_url`, a URL built from trusted parts."""
     text = normalize_ats_description(raw) if raw else None
+    url = safe_url(url) or fallback_url
+    if not url:
+        raise ParseError(f"{ats} job {ats_id} has no usable posting URL")
+    if "apply_url" in fields:
+        fields["apply_url"] = safe_url(fields["apply_url"])
     return JobDraft(
         source=ats, source_job_id=job_id(company, ats_id), source_url=url, title=" ".join(title.split()),
         raw_description=raw or None, normalized_description=text or None,

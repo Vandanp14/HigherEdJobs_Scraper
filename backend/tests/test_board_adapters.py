@@ -148,3 +148,14 @@ async def test_same_ats_id_in_two_companies_keeps_distinct_rows(tmp_path):
         for draft in result.drafts:
             db.save_board_job(company["id"], draft)
     assert db.connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 6
+
+
+@pytest.mark.parametrize("module,key", [(greenhouse, "absolute_url"), (lever, "hostedUrl"), (lever, "applyUrl"),
+                                        (ashby, "jobUrl"), (ashby, "applyUrl")])
+async def test_non_http_urls_from_boards_are_never_used(module, key):
+    # Board responses are untrusted: a javascript: URL would run in the dashboard when clicked.
+    body = fixture(f"{ats(module)}.json")
+    (body if isinstance(body, list) else body["jobs"])[0][key] = "javascript:alert(1)"
+    draft = (await fetch(module, body)).drafts[0]
+    assert draft.source_url.startswith("https://")
+    assert draft.apply_url is None or draft.apply_url.startswith("https://")

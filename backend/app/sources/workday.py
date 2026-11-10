@@ -3,7 +3,7 @@ server-side per term, and a job's description needs one more request, made only 
 could be kept and are not saved yet."""
 from ..early_career import WORKDAY_SEARCH_TERMS, location_allowed, title_candidate
 from ..parser import JobDraft, ParseError
-from .adapters import BoardFetch, company_name, draft, utc_date
+from .adapters import BoardFetch, company_name, draft, safe_url, utc_date
 from .client import BoardError, BoardMissing
 
 ATS = "workday"
@@ -53,7 +53,7 @@ async def fetch_board(client, company: dict, known_ids: set[str]) -> BoardFetch:
             result.drafts.append(JobDraft(source=ATS, source_job_id=source_job_id, source_url=url, title=title,
                                           location=location, institution=company_name(company), description_status="Failed"))
             continue
-        url = info.get("externalUrl") or url
+        url = safe_url(info.get("externalUrl")) or url
         result.drafts.append(draft(
             company, ATS, path, info.get("title") or title, url, info.get("jobDescription"), apply_url=url,
             institution=company_name(company), location=info.get("location") or location,

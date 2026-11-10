@@ -17,11 +17,12 @@ async def fetch_board(client, company: dict, known_ids: set[str]) -> BoardFetch:
     body = await client.get_json(f"https://api.lever.co/v0/postings/{company['slug']}?mode=json", key=ATS)
     result = BoardFetch()
     for job in jobs_list(body, None, ATS):
-        ats_id, title, url = required(job, ("id", "text", "hostedUrl"), ATS)
+        ats_id, title = required(job, ("id", "text"), ATS)
         categories = job.get("categories") or {}
         locations = categories.get("allLocations") or [categories.get("location")]
         item = draft(
-            company, ATS, ats_id, title, url, _description(job), apply_url=job.get("applyUrl"),
+            company, ATS, ats_id, title, job.get("hostedUrl"), _description(job), apply_url=job.get("applyUrl"),
+            fallback_url=f"https://jobs.lever.co/{company['slug']}/{ats_id}",
             institution=company_name(company), location=" / ".join(filter(None, locations)) or None,
             posted_date=utc_date(job.get("createdAt")),
         )

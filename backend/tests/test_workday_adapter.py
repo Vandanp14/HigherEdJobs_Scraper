@@ -181,3 +181,19 @@ async def test_runner_saves_failed_detail_with_failed_status(tmp_path):
     assert tuple(row) == ("Failed", "Software Engineer")
     status = db.jobs(source="workday", days="all")["items"][0]["sponsorship_status"]
     assert status == "Unavailable"
+
+
+async def test_non_http_external_url_falls_back_to_built_url():
+    fake = FakeWorkday({"software engineer": [posting("Software Engineer I", "/job/A/SE_R1")]})
+    original = fake.__call__
+
+    def evil(request):
+        response = original(request)
+        if request.method == "GET":
+            body = response.json()
+            body["jobPostingInfo"]["externalUrl"] = "javascript:alert(1)"
+            return httpx.Response(200, json=body)
+        return response
+
+    draft = (await fetch(evil)).drafts[0]
+    assert draft.source_url == draft.apply_url == f"https://{HOST}/External/job/A/SE_R1"
