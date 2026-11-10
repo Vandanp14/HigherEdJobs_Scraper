@@ -4,15 +4,16 @@ import asyncio
 import sqlite3
 import time
 
-from ..early_career import keep_job
+from ..early_career import keep_job, location_allowed, title_candidate
 from ..progress import elapsed, report
-from . import ashby, greenhouse, lever
+from . import ashby, greenhouse, lever, workday
 from .client import BoardBlocked, BoardClient, BoardMissing
 from .discovery import companies_stale, refresh_companies
 
 SOURCE = "boards"
 LABEL = "Boards"
-ADAPTERS = {"greenhouse": greenhouse.fetch_board, "lever": lever.fetch_board, "ashby": ashby.fetch_board}
+ADAPTERS = {"greenhouse": greenhouse.fetch_board, "lever": lever.fetch_board, "ashby": ashby.fetch_board,
+            "workday": workday.fetch_board}
 # Workday tenants are separate hosts, so one block skips one tenant; this many in a row stops Workday.
 WORKDAY_BLOCK_LIMIT = 3
 ERROR_LIMIT = 200
@@ -100,7 +101,12 @@ class BoardsRunner:
     def _save(self, company: dict, fetched):
         self.summary["jobs_seen"] += len(fetched.seen_ids)
         for draft in fetched.drafts:
-            if not keep_job(draft.title, draft.location, draft.normalized_description):
+            if draft.description_status == "Failed":
+                # The description could not be read, so the early-career check cannot run; keep
+                # software roles anyway so the failure is visible instead of silently dropped.
+                if not (title_candidate(draft.title) and location_allowed(draft.location)):
+                    continue
+            elif not keep_job(draft.title, draft.location, draft.normalized_description):
                 continue
             try:
                 _, is_new = self.database.save_board_job(company["id"], draft)

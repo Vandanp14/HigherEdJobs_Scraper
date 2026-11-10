@@ -1,0 +1,36 @@
+{
+ "jobPostingInfo": {
+  "id": "74121c85898c1032795e582be5f20000",
+  "title": "Software Engineer, SPE",
+  "jobDescription": "<p>NVIDIA\u00a0Networking System Product Engineering\u00a0group\u00a0is looking for\u00a0an excellent\u00a0Software Engineer.\u202f\u00a0The position requires an understanding of HW and SW to provide stable, efficient, smoothly running production tests, to enable high availability, while ensuring the quality of the products being shipped to customers.\u00a0You will lead the development of our products and raise the bar of the software development quality in the group.\u00a0\u00a0We have crafted a team of extraordinary people, whose mission is to push the frontiers of what is possible today and define the platform of tomorrow.\u00a0</p><p></p><p><b>What\u00a0you\u2019ll\u00a0be doing:</b>\u202f\u00a0\u00a0</p><ul><li><p>Design and develop\u00a0automated tests\u00a0for networking Switches and Adapters while working closely with the HW, ASIC, and SW Engineering teams to achieve a reliable test with high coverage\u00a0</p></li><li><p>Exposed to various aspects of design, DFT, and test of NVIDIA&#39;s next-generation network products\u00a0</p></li><li><p>Take a significant part in the definition and development of tests from the development level to the final test of Network-Systems\u00a0</p></li><li><p>Utilize test suites to find,\u00a0debug\u00a0and resolve problems with production process\u00a0</p></li><li><p>Ability to drive projects to full execution in time and working under pressure of schedule and multi project environment\u00a0</p></li><li><p>Supporting and\u00a0fixing\u00a0bugs of existing code. Supporting production lines for: deployments, patches, maintenance\u00a0</p></li><li><p>Test Verification and Validation (both HW and SW). Troubleshooting and\u00a0streamlining/optimizing\u00a0our testing procedures\u00a0</p></li></ul><p></p><p><b>What we need to see:</b>\u202f\u00a0</p><ul><li><p>BSc/MSc\u00a0or equivalent engineering degree in Computer Science, Electrical Engineering, or a related field\u00a0</p></li><li><p>4&#43; years of related experience in software development and design\u202f\u00a0</p></li><li><p>4&#43; years of proven experience in Python\u00a0or similar platform\u00a0</p></li><li><p>Excellent knowledge of a\u00a0version\u00a0control system (preferably GIT)\u202f\u202f\u00a0</p></li><li><p>Linux based development\u00a0</p></li><li><p>Experience with Software/Hardware products integration\u00a0</p></li><li><p>Excellent communication skills with hands-on experience collaborating with global teams\u00a0</p></li><li><p>Strong teamwork skills, with the ability to collaborate effectively across cross-functional teams\u00a0</p></li></ul><p></p><p><b>Ways to stand out from the crowd:</b>\u202f\u00a0</p><ul><li><p>Excellent programming, debugging, performance analysis, and test design skills\u00a0</p></li><li><p>Familiarity with product manufacturing flows and processes\u00a0</p></li><li><p>Exposure and knowledge around application development, configuration\u00a0management\u00a0and automation\u00a0</p></li><li><p>Experience in tools/services development. Creativity \u2013 find solutions for challenging requirements\u00a0</p></li><li><p>Strong leadership skills to drive a project from definition through mass production.</p></li></ul><p style=\"text-align:inherit\"></p><p style=\"text-align:inherit\"></p><p style=\"text-align:inherit\"></p><p style=\"text-align:inherit\"></p>",
+  "location": "Israel, Yokneam",
+  "postedOn": "Posted 30+ Days Ago",
+  "startDate": "2026-08-02",
+  "timeType": "Full time",
+  "jobReqId": "JR2015623",
+  "jobPostingId": "Software-Engineer--SPE_JR2015623",
+  "jobPostingSiteId": "NVIDIAExternalCareerSite",
+  "country": {
+   "descriptor": "Israel",
+   "id": "084562884af243748dad7c84c304d89a"
+  },
+  "canApply": true,
+  "posted": true,
+  "includeResumeParsing": true,
+  "jobRequisitionLocation": {
+   "descriptor": "Israel, Yokneam",
+   "country": {
+    "descriptor": "Israel",
+    "id": "084562884af243748dad7c84c304d89a",
+    "alpha2Code": "IL"
+   }
+  },
+  "externalUrl": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite/job/Israel-Yokneam/Software-Engineer--SPE_JR2015623"
+ },
+ "hiringOrganization": {
+  "name": "IL00 Mellanox Technologies, Ltd.",
+  "url": ""
+ },
+ "similarJobs": [],
+ "userAuthenticated": false
+}
