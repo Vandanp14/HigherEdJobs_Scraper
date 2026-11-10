@@ -66,6 +66,23 @@ start runs, wipe the database, and delete data for one job board, so the tool is
 - Fresh run: call `DELETE /api/data`, then start AIR and HigherEdJobs side by side (as `run.sh`
   did). The UI's single `activeRun` state may need a `'fresh'` value or a set; builder's call.
 
+### Storage readout (added 2026-11-10)
+
+The user wants to see storage used before and after a scrape, without adding load.
+
+- Cost: only `os.stat` file sizes, no directory walks, no polling loop beyond the existing
+  run-status poll, and no new dependency (no `psutil`).
+- Measured: `data/jobs.sqlite3` plus its `-wal`/`-shm` files if present ("Database"), and
+  `data/browser-state.json` ("Browser session").
+- `scrape_runs` gets nullable `db_bytes_before` and `db_bytes_after` columns. `start_run` records
+  the size before and `finish_run` records it after. Old rows stay NULL and the UI shows "—".
+- `GET /api/data/storage` returns `{"database_bytes": int, "browser_session_bytes": int}`.
+- The Data panel header shows the current Database and Browser session sizes. Each source row
+  shows its last run's "before → after" (e.g. `12.1 MB → 12.4 MB`). The run-complete notice
+  appends the same. A delete or clear also refreshes the readout.
+- Claude's call: storage on disk only. RAM is out of scope, because the server's own memory
+  excludes the Chromium process that does the scraping, so the number would mislead.
+
 ### Scripts and docs
 
 - `run.sh`: drop the scrape block and `--no-scrape` flag; keep build, port pick, health wait,
