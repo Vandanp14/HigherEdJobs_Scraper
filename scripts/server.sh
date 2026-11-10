@@ -1,4 +1,4 @@
-# Sourced by run.sh, clear.sh and daily.sh. Another project may use port 8000, so this dashboard
+# Sourced by run.sh. Another project may use port 8000, so this dashboard
 # takes the first free port from 8000 to 8010 and records it in data/server.port.
 PORT_FILE=data/server.port
 APP_ID=higheredjobs-review

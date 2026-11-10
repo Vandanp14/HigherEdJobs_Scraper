@@ -6,16 +6,11 @@ Local job discovery and sponsorship-language review based on `HigherEdJobs_PRD.m
 
 | Command | What it does |
 |---|---|
-| `./daily.sh` | Morning: wipe saved jobs, then run a fresh scrape (`clear.sh` + `run.sh`). |
-| `./run.sh` | Open the dashboard and scrape **without wiping**. Jobs already saved with a description are skipped, so a later run the same day only opens new listings. Statuses and notes are kept; jobs that failed before are retried. |
-| `./view.sh` | Open the dashboard with the jobs already saved. Nothing is scraped or wiped. |
-| `./clear.sh` | Wipe saved jobs only. Refuses while the server is running. |
+| `./run.sh` | Build the dashboard if its source changed, start the server, and open the dashboard. It never scrapes or wipes anything; start runs and manage data from the dashboard. |
 
-The dashboard uses port 8000, or the first free port up to 8010 if another project holds 8000; the terminal prints the URL. The scripts recognise this dashboard by its `/api/health` response, so only it, not another project, blocks `clear.sh` and a second `run.sh`. The development setup below still assumes port 8000.
+The dashboard uses port 8000, or the first free port up to 8010 if another project holds 8000; the terminal prints the URL. `run.sh` recognises this dashboard by its `/api/health` response, so only it, not another project, blocks a second `run.sh`. The development setup below still assumes port 8000.
 
-`./clear.sh` (and so `./daily.sh`) **wipes all saved jobs**, including application statuses (Opened, Applied, Skipped) and notes. The saved browser session in `data/browser-state.json` is kept.
-
-`./run.sh` rebuilds the dashboard if its source changed, serves the API and dashboard, opens it, and starts the HigherEdJobs and AIR runs. Saved jobs show immediately; new ones appear as they are fetched.
+Saved jobs show immediately. Click **Run HigherEdJobs** or **Run AIR Career Center** to fetch listings; new ones appear as they are fetched. Jobs already saved with a description are skipped, so a later run the same day only opens new listings. Statuses and notes are kept; jobs that failed before are retried.
 
 HigherEdJobs runs only look back **14 days**: older listings are skipped, and each search stops
 paging once a whole results page is older than that. Listings with no date are kept. Change it with
@@ -38,6 +33,18 @@ does not keep pulling you back to its desktop. AIR runs without a window because
 verification.
 
 Press `Ctrl+C` to stop.
+
+### Data panel
+
+The toolbar **Data** button opens the Data panel:
+
+- **Per-source delete** removes one job board's jobs and its run history, including leftover Company boards rows (greenhouse, lever, ashby, workday, smartrecruiters) from the earlier version.
+- **Clear all data** removes every job and all run history.
+- **Fresh run** clears all data, then runs AIR Career Center and HigherEdJobs together (the old morning routine).
+- Every delete or clear asks for confirmation in the page first, showing how many jobs it removes, how many are marked **Applied**, and how many have notes. Deletes **do include Applied status and notes**.
+- The panel blocks a clear or delete while a run for that data is active (the API answers 409). Deleting one source while a different source runs is allowed.
+- The saved browser session in `data/browser-state.json` is always kept.
+- A storage readout shows the Database and Browser session sizes, and each run's size before and after.
 
 ## Start the app for development
 
@@ -80,11 +87,12 @@ Badges under the label: **E-Verify** (needed for STEM OPT), **Cap-exempt**, and 
 warning (often not cap-exempt). Pick several sponsorship labels at once with the Sponsorship chips;
 results stay newest first. Saved jobs are re-labelled automatically when the classifier version changes.
 
-1. Click **Run HigherEdJobs** to run every enabled keyword and category group, or **Run AIR Career Center** to fetch AIR directly without running HigherEdJobs searches.
-2. Use **Search sources** to enable or disable the eight HigherEdJobs groups and run either source.
-3. Filter by source, date, search group, sponsorship signal, application status, or text. The text search is fuzzy: words match in any order, partial words work, and small typos are tolerated ("sofware devloper" finds "Software Developer").
-4. Click an evidence excerpt to show its full source context. AIR salary and application due dates are shown in the unified table.
-5. Open a listing or application link to mark a new job as **Opened**. Change the status manually as needed.
+1. Open **Data** in the toolbar to delete a job board's data, clear everything, or start a fresh run (see above).
+2. Click **Run HigherEdJobs** to run every enabled keyword and category group, or **Run AIR Career Center** to fetch AIR directly without running HigherEdJobs searches.
+3. Use **Search sources** to enable or disable the eight HigherEdJobs groups and run either source.
+4. Filter by source, date, search group, sponsorship signal, application status, or text. The text search is fuzzy: words match in any order, partial words work, and small typos are tolerated ("sofware devloper" finds "Software Developer").
+5. Click an evidence excerpt to show its full source context. AIR salary and application due dates are shown in the unified table.
+6. Open a listing or application link to mark a new job as **Opened**. Change the status manually as needed.
 
 The run works sequentially to be considerate of HigherEdJobs. A small run can finish in minutes; a run with roughly 150 job listings can take 8–15 minutes.
 
@@ -150,11 +158,9 @@ All job data is stored locally in `data/jobs.sqlite3`. It is a single SQLite fil
 # Save space: remove original HTML while keeping jobs, evidence, classifications, and statuses
 .venv/bin/python scripts/manage-data.py compact
 
-# Delete saved jobs and scrape history; keeps browser-state.json
-.venv/bin/python scripts/manage-data.py clear-jobs
 ```
 
-`clear-jobs` means a future run must collect job data again. It does not require codegen again unless HigherEdJobs asks for a new verification.
+To delete jobs and scrape history, use the dashboard's **Data** panel; it keeps `browser-state.json`, so a future run collects job data again without needing codegen unless HigherEdJobs asks for a new verification.
 
 ## Project commands
 
