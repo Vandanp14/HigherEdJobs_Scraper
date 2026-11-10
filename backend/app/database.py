@@ -398,15 +398,20 @@ class Database:
         self.connection.commit()
         return closed
 
-    def jobs(self, query: str = "", group: str = "", sponsorship: str = "", application_status: str = "", days: str = "7", sort: str = "newest", page: int = 1, per_page: int = 50, source: str = "", description: str = "", due: str = "", hide: str = "", min_fit: int | None = None):
+    def jobs(self, query: str = "", group: str = "", sponsorship: str = "", application_status: str = "", days: str = "7", sort: str = "newest", page: int = 1, per_page: int = 50, source: str = "", description: str = "", due: str = "", hide: str = "", min_fit: int | None = None, closed: str = ""):
         # HigherEdJobs keyword matches saved before the title filter can be off-field (a chemistry
         # faculty post that mentions "data analysis"); show only CS titles or trusted IT category
         # matches, and never teaching roles.
         clauses, values = ["(j.source != 'higheredjobs' OR j.title IS NULL OR (NOT teaching_title(j.title) AND (cs_title(j.title) OR EXISTS ("
                            "SELECT 1 FROM job_search_matches cm JOIN search_groups cg ON cg.id=cm.search_group_id "
                            "WHERE cm.job_id=j.id AND cg.trusted=1))))"], []
-        if source:
-            clauses.append("j.source=?"); values.append(source)
+        sources = [item for item in source.split(",") if item]
+        if sources:
+            clauses.append(f"j.source IN ({_marks(sources)})"); values.extend(sources)
+        # Company boards jobs the board no longer lists are hidden unless asked for; applied ones stay.
+        if closed != "include":
+            clauses.append(f"(j.source NOT IN ({_marks(BOARD_SOURCES)}) OR j.active=1 OR j.application_status='Applied')")
+            values.extend(BOARD_SOURCES)
         if query:
             clauses.append("fuzzy_match(?, j.title, j.institution, j.location)"); values.append(query)
         if group:
@@ -438,7 +443,11 @@ class Database:
         elif application_status: clauses.append("j.application_status=?"); values.append(application_status)
         elif days != "all" and due != "all": clauses.append("j.application_status != 'Skipped'")
         if days not in ("", "all"):
-            clauses.append("(j.source='air' OR j.posted_date >= date('now', ?))"); values.append(f"-{int(days)} days")
+            # Board jobs without a posting date count from when they were first seen.
+            clauses.append(f"(j.source='air' OR j.posted_date >= date('now', ?) OR (j.posted_date IS NULL "
+                           f"AND j.source IN ({_marks(BOARD_SOURCES)}) AND j.first_seen_at >= date('now', ?)))")
+            window = f"-{int(days)} days"
+            values.extend([window, *BOARD_SOURCES, window])
         # AIR listings carry a due date instead of a posted date. Undated ones stay in the upcoming view.
         if due == "upcoming":
             clauses.append("(j.application_due_date IS NULL OR j.application_due_date >= date('now', 'localtime'))")

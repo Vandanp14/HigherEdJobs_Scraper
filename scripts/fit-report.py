@@ -1,8 +1,8 @@
 """Print the best and worst For you matches so the fit weights can be checked against real jobs.
 
 Usage: .venv/bin/python scripts/fit-report.py [top] [bottom]
-Rescores every saved HigherEdJobs job with the current rules and resume, then prints the ranking
-the For you tab shows by default (any posting date, Skipped jobs excluded).
+Rescores every saved ranked job (HigherEdJobs and Company boards) with the current rules and resume,
+then prints them in fit order (any posting date, Skipped jobs excluded).
 """
 import sys
 from pathlib import Path
@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.app.config import Settings  # noqa: E402
-from backend.app.database import Database  # noqa: E402
+from backend.app.database import FIT_SOURCES, Database  # noqa: E402
 
 
 def line(item: dict) -> str:
@@ -27,7 +27,7 @@ def main(top: int = 20, bottom: int = 10) -> None:
     if database.resume is None:
         sys.exit(f"No readable resume at {settings.resume}")
     print(f"Rescored {database.rescore_fit()} jobs.")
-    query = dict(source="higheredjobs", days="all", sort="fit", application_status="open", per_page=10_000)
+    query = dict(source=",".join(FIT_SOURCES), days="all", sort="fit", application_status="open", per_page=10_000)
     data = database.jobs(**query)
     items = data["items"]
     print(f"\nTop {top} of {data['total']}:")

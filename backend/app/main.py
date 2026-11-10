@@ -10,6 +10,9 @@ from pydantic import BaseModel, Field
 from .config import Settings
 from .database import Database
 from .scraper import AIRScraper, HigherEdJobsScraper
+from .sources.client import BoardClient
+from .sources.discovery import refresh_companies
+from .sources.runner import BoardsRunner
 
 settings=Settings(); database=Database(settings.database, settings.resume); app=FastAPI(title="HigherEdJobs Review")
 # Runs execute inside this process, so any run still open at startup was cut off by a stop.
@@ -43,8 +46,8 @@ async def group_update(group_id:str, body:GroupUpdate):
     if not database.set_group_enabled(group_id,body.enabled): raise HTTPException(404,"Search group not found")
     return {"ok":True}
 @app.get("/api/jobs")
-async def jobs(query:str="", group:str="", sponsorship:str="", application_status:str="", days:str="7", sort:str="newest", page:int=1, source:str="", description:str="", due:str="", hide:str="", min_fit:str=""):
-    return database.jobs(query,group,sponsorship,application_status,days,sort,max(page,1),source=source,description=description,due=due,hide=hide,min_fit=int(min_fit) if min_fit.isdigit() else None)
+async def jobs(query:str="", group:str="", sponsorship:str="", application_status:str="", days:str="7", sort:str="newest", page:int=1, source:str="", description:str="", due:str="", hide:str="", min_fit:str="", closed:str=""):
+    return database.jobs(query,group,sponsorship,application_status,days,sort,max(page,1),source=source,description=description,due=due,hide=hide,min_fit=int(min_fit) if min_fit.isdigit() else None,closed=closed)
 @app.patch("/api/jobs/{job_id}")
 async def job_update(job_id:int, body:JobUpdate):
     if not database.update_job(job_id,body.model_dump(exclude_none=True)): raise HTTPException(404,"Job not found")
@@ -62,6 +65,12 @@ async def exclusive(source:str, start):
 async def run(body:RunRequest): return await exclusive("higheredjobs", lambda: HigherEdJobsScraper(database,settings).run(body.group_ids or None))
 @app.post("/api/runs/air")
 async def run_air(): return await exclusive("air", lambda: AIRScraper(database,settings).run())
+@app.post("/api/runs/boards")
+async def run_boards(): return await exclusive("boards", lambda: BoardsRunner(database,settings).run())
+async def _refresh():
+    async with BoardClient(settings.board_delay) as client: return await refresh_companies(database, client)
+@app.post("/api/boards/refresh")
+async def boards_refresh(): return await exclusive("discovery", _refresh)
 @app.get("/api/sources")
 async def sources():
     return [
@@ -82,6 +91,15 @@ async def sources():
             "enabled": True,
             "run_path": "/api/runs/air",
             "last_run": database.latest_run("air"),
+        },
+        {
+            "id": "boards",
+            "name": "Company boards",
+            "description": "Early-career software roles from public Greenhouse, Lever, Ashby and Workday boards.",
+            "supports_queries": False,
+            "enabled": True,
+            "run_path": "/api/runs/boards",
+            "last_run": database.latest_run("boards"),
         },
     ]
 @app.post("/api/reanalyze")
