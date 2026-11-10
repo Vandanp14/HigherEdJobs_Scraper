@@ -51,7 +51,10 @@ class BoardsRunner:
             self.summary["companies_total"] = sum(map(len, queues.values()))
             report(LABEL, f"Checking {self.summary['companies_total']} company boards: " + ", ".join(f"{ats} {len(q)}" for ats, q in queues.items()))
             self._progress()
-            await asyncio.gather(*(self._run_ats(client, ats, queue) for ats, queue in queues.items() if queue))
+            outcomes = await asyncio.gather(*(self._run_ats(client, ats, queue) for ats, queue in queues.items() if queue), return_exceptions=True)
+            for outcome in outcomes:
+                if isinstance(outcome, BaseException):
+                    self._error({"error": f"An ATS stopped early: {outcome!r}"})
         except Exception as error:
             self._error({"error": f"Boards run stopped: {error!r}"})
         finally:
@@ -71,7 +74,9 @@ class BoardsRunner:
             try:
                 fetched = await adapter(client, company, self.database.known_job_ids(company["id"]))
             except BoardBlocked as blocked:
-                # Never retried or worked around. Left unchecked, so it is first in line next run.
+                # Never retried or worked around. The company that drew the block is recorded so it
+                # moves to the back of the queue; the ones not asked stay first in line next run.
+                self.database.record_company_check(company["id"], error=str(blocked))
                 self._error({"company": name, "error": str(blocked)})
                 if ats != "workday":
                     self.summary["companies_skipped"] += len(queue) - index
@@ -94,7 +99,14 @@ class BoardsRunner:
                 self._progress()
                 continue
             streak = 0
-            self._save(company, fetched)
+            try:
+                self._save(company, fetched)
+            except Exception as error:
+                # A database error (for example "database is locked") fails this company only.
+                self.database.connection.rollback()
+                self.database.record_company_check(company["id"], error=str(error))
+                self._error({"company": name, "error": f"Saving failed: {error}"})
+                self.summary["companies_failed"] += 1
             self.summary["companies_checked"] += 1
             self._progress()
 

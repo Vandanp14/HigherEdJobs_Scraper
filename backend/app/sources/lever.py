@@ -1,5 +1,6 @@
 """Lever public postings API: one request returns every posting with its description."""
-from .adapters import BoardFetch, company_name, draft, jobs_list, required, utc_date
+from ..early_career import title_candidate
+from .adapters import BoardFetch, company_name, draft, job_id, jobs_list, required, utc_date
 
 ATS = "lever"
 
@@ -18,6 +19,9 @@ async def fetch_board(client, company: dict, known_ids: set[str]) -> BoardFetch:
     result = BoardFetch()
     for job in jobs_list(body, None, ATS):
         ats_id, title = required(job, ("id", "text"), ATS)
+        result.seen_ids.add(job_id(company, ats_id))
+        if not title_candidate(title):
+            continue  # Never kept, so its description is not parsed.
         categories = job.get("categories") or {}
         locations = categories.get("allLocations") or [categories.get("location")]
         item = draft(
@@ -27,5 +31,4 @@ async def fetch_board(client, company: dict, known_ids: set[str]) -> BoardFetch:
             posted_date=utc_date(job.get("createdAt")),
         )
         result.drafts.append(item)
-        result.seen_ids.add(item.source_job_id)
     return result

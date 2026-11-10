@@ -62,7 +62,9 @@ def ats(module) -> str:
 async def test_parses_fixture(module):
     result = await fetch(module, fixture(f"{ats(module)}.json"))
     assert result.complete
-    assert len(result.drafts) == 3 == len(result.seen_ids)
+    # Every listed job is seen; only software titles are parsed into drafts.
+    assert len(result.seen_ids) == 3
+    assert [d.title for d in result.drafts] == [EXPECTED[module]["title"]]
     draft = result.drafts[0]
     for field, value in EXPECTED[module].items():
         assert getattr(draft, field) == value, field
@@ -70,7 +72,7 @@ async def test_parses_fixture(module):
     assert draft.description_status == "Complete"
     assert draft.raw_description and draft.normalized_description
     assert "<" not in draft.normalized_description
-    assert {d.source_job_id for d in result.drafts} == result.seen_ids
+    assert {d.source_job_id for d in result.drafts} <= result.seen_ids
 
 
 async def test_greenhouse_escaped_content_becomes_plain_text():
@@ -107,7 +109,7 @@ async def test_ashby_skips_unlisted():
     body = fixture("ashby.json")
     body["jobs"][0]["isListed"] = False
     result = await fetch(ashby, body)
-    assert len(result.drafts) == 2
+    assert len(result.seen_ids) == 2
     assert EXPECTED[ashby]["source_job_id"] not in result.seen_ids
 
 
@@ -147,7 +149,7 @@ async def test_same_ats_id_in_two_companies_keeps_distinct_rows(tmp_path):
         result = await fetch(greenhouse, copy.deepcopy(body), company)
         for draft in result.drafts:
             db.save_board_job(company["id"], draft)
-    assert db.connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 6
+    assert db.connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 2
 
 
 @pytest.mark.parametrize("module,key", [(greenhouse, "absolute_url"), (lever, "hostedUrl"), (lever, "applyUrl"),
@@ -159,3 +161,14 @@ async def test_non_http_urls_from_boards_are_never_used(module, key):
     draft = (await fetch(module, body)).drafts[0]
     assert draft.source_url.startswith("https://")
     assert draft.apply_url is None or draft.apply_url.startswith("https://")
+
+
+@pytest.mark.parametrize("module", ADAPTERS)
+async def test_descriptions_of_non_software_jobs_are_not_parsed(module, monkeypatch):
+    # Parsing runs on the server's event loop; a board of thousands of jobs must not parse them all.
+    from backend.app.sources import adapters
+    parsed = []
+    real = adapters.normalize_ats_description
+    monkeypatch.setattr(adapters, "normalize_ats_description", lambda raw: parsed.append(raw) or real(raw))
+    await fetch(module, fixture(f"{ats(module)}.json"))
+    assert len(parsed) == 1

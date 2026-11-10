@@ -42,24 +42,33 @@ async def _cdx(client: BoardClient, url: str, as_text: bool = False):
             await asyncio.sleep(wait)
 
 
-async def _common_crawl_urls(client: BoardClient, errors: list[dict]) -> list[str]:
+async def _common_crawl(client: BoardClient, save, errors: list[dict]) -> None:
+    """Save boards from Common Crawl page by page, so nothing large is held in memory. A block
+    stops every Common Crawl request for the run."""
     try:
         collections = await client.get_json(f"{COMMON_CRAWL}/collinfo.json", key="commoncrawl")
         index = f"{COMMON_CRAWL}/{collections[0]['id']}-index"
-    except (BoardError, BoardBlocked, BoardMissing, KeyError, IndexError, TypeError) as error:
+    except BoardBlocked as error:
+        errors.append({"source": "commoncrawl", "error": str(error)})
+        return
+    except (BoardError, BoardMissing, KeyError, IndexError, TypeError) as error:
         errors.append({"source": "commoncrawl", "error": f"Collection list unavailable: {error}"})
-        return []
-    urls = []
+        return
     for pattern in CDX_PATTERNS:
         query = f"{index}?url={pattern}&output=json&fl=url"
         try:
             pages = int((await _cdx(client, query + "&showNumPages=true")).get("pages", 0))
             for page in range(pages):
                 text = await _cdx(client, f"{query}&page={page}", as_text=True)
-                urls += [json.loads(line).get("url", "") for line in text.splitlines() if line.strip()]
-        except (BoardError, BoardBlocked, ValueError, AttributeError) as error:
+                for line in text.splitlines():
+                    if line.strip():
+                        save(json.loads(line).get("url", ""), None, "commoncrawl")
+                await asyncio.sleep(0)  # Let the dashboard's requests run between pages.
+        except BoardBlocked as error:
+            errors.append({"source": f"commoncrawl {pattern}", "error": f"{error}; no more Common Crawl requests this run"})
+            return
+        except (BoardError, ValueError, AttributeError) as error:
             errors.append({"source": f"commoncrawl {pattern}", "error": str(error)})
-    return urls
 
 
 async def refresh_companies(database, client: BoardClient) -> dict:
@@ -67,23 +76,28 @@ async def refresh_companies(database, client: BoardClient) -> dict:
     is kept; companies are never removed here."""
     run_id = database.start_run([], source="discovery")
     errors: list[dict] = []
-    found = new = 0
+    counts = {"found": 0, "new": 0}
+    seen: dict[str, set] = {"commoncrawl": set(), "simplify": set()}
+
+    def save(url: str, name: str | None, via: str):
+        ref = parse_board_url(url)
+        key = ref and (ref.ats, ref.slug.lower(), ref.site.lower())
+        if not ref or key in seen[via]:
+            return  # Many URLs share one board; each board is written once per source.
+        seen[via].add(key)
+        counts["found"] += 1
+        counts["new"] += database.upsert_company(ref, name, via)
+
     try:
-        for url in await _common_crawl_urls(client, errors):
-            ref = parse_board_url(url)
-            if ref:
-                found += 1
-                new += database.upsert_company(ref, None, "commoncrawl")
+        await _common_crawl(client, save, errors)
         try:
             listings = await client.get_json(SIMPLIFY_URL, key="github")
         except (BoardError, BoardBlocked, BoardMissing) as error:
             errors.append({"source": "simplify", "error": str(error)})
             listings = []
         for listing in listings if isinstance(listings, list) else []:
-            ref = parse_board_url(str(listing.get("url") or "")) if isinstance(listing, dict) else None
-            if ref:
-                found += 1
-                new += database.upsert_company(ref, listing.get("company_name") or None, "simplify")
+            if isinstance(listing, dict):
+                save(str(listing.get("url") or ""), listing.get("company_name") or None, "simplify")
     finally:
-        database.finish_run(run_id, found, new, 0, errors)
-    return {"found": found, "new": new, "errors": errors}
+        database.finish_run(run_id, counts["found"], counts["new"], 0, errors)
+    return {**counts, "errors": errors}

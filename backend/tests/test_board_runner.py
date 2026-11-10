@@ -94,8 +94,10 @@ async def test_429_stops_only_that_ats(db):
     assert gh.calls == ["acme"]
     assert lv.calls == ["gamma", "delta"]
     assert result["summary"]["companies_skipped"] == 2
-    unchecked = {c["slug"]: c["last_checked_at"] for c in db.companies()}
-    assert unchecked["acme"] is None and unchecked["beta"] is None
+    checked = {c["slug"]: c for c in db.companies()}
+    # The company that drew the block goes to the back of the queue; the ones never asked stay first.
+    assert checked["acme"]["last_checked_at"] is not None and "blocked" in checked["acme"]["last_error"]
+    assert checked["beta"]["last_checked_at"] is None
     message = result["errors"][0]["error"]
     assert "boards-api.greenhouse.io" in message and "120" in message
 
@@ -252,3 +254,31 @@ async def test_known_ids_passed_to_adapter(db):
 
     await run(db, greenhouse=fetch)
     assert received == [{"acme:1"}]
+
+
+async def test_a_block_does_not_starve_the_ats_on_later_runs(db):
+    add(db, "lever", "html", "good")
+    lv = board(("html", BoardBlocked("api.lever.co", None, None)), ("good", [1]))
+    await run(db, lever=lv)
+    lv2 = board(("good", [1]))
+    await run(db, lever=lv2)
+    assert lv2.calls[0] == "good"
+
+
+async def test_a_database_error_while_saving_fails_one_company_not_the_run(db, monkeypatch):
+    import sqlite3
+    add(db, "greenhouse", "acme", "beta")
+    add(db, "lever", "gamma")
+    real = db.save_board_job
+
+    def flaky(company_id, draft):
+        if draft.source_job_id.startswith("acme:"):
+            raise sqlite3.OperationalError("database is locked")
+        return real(company_id, draft)
+
+    monkeypatch.setattr(db, "save_board_job", flaky)
+    result = await run(db, greenhouse=board(("acme", [1]), ("beta", [2])), lever=board(("gamma", [3])))
+    assert {"beta:2", "gamma:3"} <= set(jobs(db))
+    assert result["summary"]["companies_failed"] == 1
+    assert result["summary"]["companies_succeeded"] == 2
+    assert any("database is locked" in error["error"] for error in result["errors"])

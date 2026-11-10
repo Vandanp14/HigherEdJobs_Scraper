@@ -161,3 +161,29 @@ def test_stale_when_empty_or_over_seven_days(db):
     old = (datetime.now(timezone.utc) - timedelta(days=8)).isoformat(timespec="seconds")
     db.connection.execute("UPDATE scrape_runs SET completed_at=? WHERE id=?", (old, run_id))
     assert discovery.companies_stale(db)
+
+
+async def test_common_crawl_block_stops_all_common_crawl_requests(db):
+    calls = []
+    web = fake_web()
+    def blocking(request):
+        url = str(request.url)
+        if "index.commoncrawl.org/CC-MAIN" in url:
+            calls.append(url)
+            return httpx.Response(429)
+        return web(request)
+    async with client_for(blocking) as client:
+        result = await discovery.refresh_companies(db, client)
+    assert len(calls) == 1
+    assert any("commoncrawl" in error["source"] for error in result["errors"])
+    assert {c["slug"] for c in db.companies()} == {"ramp", "stripe"}
+
+
+async def test_duplicate_urls_are_saved_once(db, monkeypatch):
+    saved = []
+    real = db.upsert_company
+    monkeypatch.setattr(db, "upsert_company", lambda ref, name, via: saved.append(ref) or real(ref, name, via))
+    async with client_for(fake_web()) as client:
+        await discovery.refresh_companies(db, client)
+    # spotify is captured twice by Common Crawl; stripe again by SimplifyJobs, which may add its name.
+    assert sum(1 for ref in saved if ref.slug == "spotify") == 1
