@@ -87,5 +87,19 @@ async def sources():
 @app.post("/api/reanalyze")
 async def reanalyze(): return {"reanalyzed":database.reanalyze()}
 
+SOURCE_NAMES={"higheredjobs":"HigherEdJobs","air":"AIR Career Center","greenhouse":"Greenhouse","lever":"Lever","ashby":"Ashby","workday":"Workday","smartrecruiters":"SmartRecruiters"}
+@app.get("/api/data/sources")
+async def data_sources(): return [{**row,"name":SOURCE_NAMES.get(row["source"],row["source"])} for row in database.source_counts()]
+@app.delete("/api/data/sources/{source}")
+async def delete_source_data(source: str):
+    if source in RUNNING: raise HTTPException(409,"A run for this source is in progress")
+    deleted=database.delete_source(source)
+    if not deleted["jobs"] and not deleted["runs"]: raise HTTPException(404,"No saved data for this source")
+    return {"deleted":deleted}
+@app.delete("/api/data")
+async def clear_data():
+    if RUNNING: raise HTTPException(409,"Stop running scrapes before clearing data")
+    return {"deleted":database.clear_jobs()}
+
 frontend=Path(__file__).resolve().parents[2]/"frontend"/"dist"
 if frontend.exists(): app.mount("/", StaticFiles(directory=frontend,html=True),name="frontend")

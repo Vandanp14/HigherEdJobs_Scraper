@@ -1,3 +1,6 @@
+from fastapi.testclient import TestClient
+
+from backend.app import main
 from backend.app.database import Database
 from backend.app.parser import JobDraft
 
@@ -68,3 +71,76 @@ def test_clear_jobs_returns_counts(tmp_path):
     assert db.clear_jobs() == {"jobs": 3, "runs": 2}
     assert count(db, "jobs") == 0
     assert db.clear_jobs() == {"jobs": 0, "runs": 0}
+
+
+def api(tmp_path, extra_source=None):
+    db, ids = seed(tmp_path)
+    if extra_source:
+        db.upsert_job(JobDraft(source=extra_source, source_job_id="z1", source_url="https://x/z1", title="z1"), "data")
+    original = main.database
+    main.database = db
+    return db, original
+
+
+def test_data_sources_lists_every_source_with_names(tmp_path):
+    db, original = api(tmp_path, "foo")
+    try:
+        rows = TestClient(main.app).get("/api/data/sources").json()
+        names = {row["source"]: row["name"] for row in rows}
+        assert names == {"higheredjobs": "HigherEdJobs", "greenhouse": "Greenhouse", "foo": "foo"}
+        assert {"jobs", "applied", "with_notes"} <= set(rows[0])
+    finally:
+        main.database = original
+
+
+def test_delete_source_endpoint_deletes_and_404s_after(tmp_path):
+    db, original = api(tmp_path)
+    try:
+        client = TestClient(main.app)
+        response = client.delete("/api/data/sources/higheredjobs")
+        assert response.status_code == 200
+        assert response.json() == {"deleted": {"jobs": 2, "runs": 1}}
+        assert client.delete("/api/data/sources/higheredjobs").status_code == 404
+    finally:
+        main.database = original
+
+
+def test_delete_source_blocked_while_that_source_runs(tmp_path):
+    db, original = api(tmp_path)
+    main.RUNNING.add("higheredjobs")
+    try:
+        response = TestClient(main.app).delete("/api/data/sources/higheredjobs")
+        assert response.status_code == 409
+        assert count(db, "jobs") == 3
+    finally:
+        main.RUNNING.discard("higheredjobs")
+        main.database = original
+
+
+def test_delete_source_allowed_while_other_source_runs(tmp_path):
+    db, original = api(tmp_path)
+    main.RUNNING.add("higheredjobs")
+    try:
+        response = TestClient(main.app).delete("/api/data/sources/greenhouse")
+        assert response.status_code == 200
+        assert count(db, "jobs") == 2
+    finally:
+        main.RUNNING.discard("higheredjobs")
+        main.database = original
+
+
+def test_clear_all_blocked_while_any_run_active(tmp_path):
+    db, original = api(tmp_path)
+    main.RUNNING.add("air")
+    try:
+        client = TestClient(main.app)
+        assert client.delete("/api/data").status_code == 409
+        assert count(db, "jobs") == 3
+        main.RUNNING.discard("air")
+        response = client.delete("/api/data")
+        assert response.status_code == 200
+        assert response.json()["deleted"]["jobs"] == 3
+        assert client.get("/api/data/sources").json() == []
+    finally:
+        main.RUNNING.discard("air")
+        main.database = original
