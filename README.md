@@ -42,7 +42,7 @@ The toolbar **Data** button opens the Data panel:
 - **Clear all data** removes every job and all run history.
 - **Fresh run** clears all data, then runs AIR Career Center and HigherEdJobs together (the old morning routine).
 - Every delete or clear asks for confirmation in the page first, showing how many jobs it removes, how many are marked **Applied**, and how many have notes. Deletes **do include Applied status and notes**.
-- The panel blocks a clear or delete while a run for that data is active (the API answers 409). Deleting one source while a different source runs is allowed.
+- The panel disables every delete, clear and fresh-run button while any run is active. The API itself is narrower: it answers 409 only for a delete of a source that is running, or a clear-all while any run is active.
 - The saved browser session in `data/browser-state.json` is always kept.
 - A storage readout shows the Database and Browser session sizes, and each run's size before and after.
 
