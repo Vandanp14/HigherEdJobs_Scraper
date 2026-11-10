@@ -24,7 +24,7 @@
 
 1. Deleting one source while a *different* source is running must succeed (only same-source is blocked). → Task 2 test `test_delete_source_allowed_while_other_source_runs`.
 2. Fresh run when the clear returns 409 must not start any run. → Task 3 browser test `test_fresh_run_does_not_scrape_when_clear_is_refused`.
-3. A source that has only `scrape_runs` rows (jobs already gone) still returns 404 on per-source delete and is not listed — and its run rows are removed by clear-all. → Task 1 test `test_source_counts_ignores_run_only_sources`.
+3. A source that has only `scrape_runs` rows (jobs already gone) is not listed, and per-source delete returns 200 removing its run rows (404 only when nothing matched) — and its run rows are removed by clear-all. → Task 1 test `test_source_counts_ignores_run_only_sources`.
 4. After deleting the source currently shown on the board/filter, the dashboard reloads to an empty or page-1 view, not an error. → Task 3 browser test `test_deleting_a_source_refreshes_counts_and_jobs`.
 5. Fresh run runs AIR and HigherEdJobs at once, but each scraper returns `latest_run()` with no source, so one notice can show the other source's numbers. → Task 4 fix + test `test_run_result_is_for_its_own_source`.
 6. `application_status` other than `New`/`Opened` (`Applied`) and non-empty `notes` are counted; whitespace-only notes count as no notes. → Task 1 test `test_source_counts_report_applied_and_notes`.
