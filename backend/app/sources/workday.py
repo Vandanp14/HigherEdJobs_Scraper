@@ -11,10 +11,16 @@ PAGE_SIZE = 20
 
 
 def _postings(body) -> list[dict]:
+    """Usable postings on one list page. Workday sometimes lists an entry with only `bulletFields`
+    and no path; it cannot be opened, so it is skipped. A page with no usable entry at all means
+    the format changed."""
     postings = body.get("jobPostings") if isinstance(body, dict) else None
-    if not isinstance(postings, list) or not all(isinstance(item, dict) and item.get("externalPath") for item in postings):
+    if not isinstance(postings, list):
+        raise ParseError("workday list response format changed: no jobPostings")
+    usable = [item for item in postings if isinstance(item, dict) and item.get("externalPath")]
+    if postings and not usable:
         raise ParseError("workday list response format changed: no jobPostings with externalPath")
-    return postings
+    return usable
 
 
 async def fetch_board(client, company: dict, known_ids: set[str]) -> BoardFetch:

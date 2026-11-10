@@ -197,3 +197,16 @@ async def test_non_http_external_url_falls_back_to_built_url():
 
     draft = (await fetch(evil)).drafts[0]
     assert draft.source_url == draft.apply_url == f"https://{HOST}/External/job/A/SE_R1"
+
+
+async def test_entries_without_a_path_are_skipped_not_a_format_change():
+    # Seen live (Leidos, 2026-11-10): a page can list {"bulletFields": ["R-00195910"]} with no path or title.
+    fake = FakeWorkday({"software engineer": [{"bulletFields": ["R-00195910"]}, posting("Software Engineer I", "/job/A/SE_R1")]})
+    result = await fetch(fake)
+    assert result.seen_ids == {sid("/job/A/SE_R1")}
+    assert result.complete
+
+
+async def test_page_of_only_unusable_entries_is_a_format_change():
+    with pytest.raises(ParseError):
+        await fetch(FakeWorkday({"software engineer": [{"bulletFields": ["R-1"]}, {"bulletFields": ["R-2"]}]}))
