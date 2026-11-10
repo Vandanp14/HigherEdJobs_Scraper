@@ -77,11 +77,12 @@ class HigherEdJobsScraper:
             while True:
                 html=await page.content(); now=datetime.now(timezone.utc); listings=parse_results(html, page.url, now)
                 report(HEJ, f"{name} page {page_number}: {len(listings)} listings")
-                # Undated listings are kept: a missing date is not evidence that a job is old.
-                too_old = [listing for listing in listings if cutoff and listing.posted_date and listing.posted_date < cutoff]
-                skipped_old += len(too_old)
+                # Results are newest-first (SortBy=1). Undated listings before the first old one are kept, since a
+                # missing date alone is not evidence of age; undated ones after it are the old tail and are skipped.
+                old_seen = False
                 for listing in listings:
-                    if listing in too_old: continue
+                    if cutoff and (listing.posted_date and listing.posted_date < cutoff or old_seen and not listing.posted_date):
+                        old_seen = True; skipped_old += 1; continue
                     key=listing.higheredjobs_url
                     if key in seen: continue
                     seen.add(key)
@@ -109,8 +110,8 @@ class HigherEdJobsScraper:
                         errors.append({"group":name,"listing_url":key,"error":str(error)})
                         report(HEJ, f"  ✗ {label} — {str(error).splitlines()[0] if str(error) else type(error).__name__}")
                     finally: await asyncio.sleep(self.settings.request_delay)
-                if listings and len(too_old) == len(listings):
-                    report(HEJ, f"{name}: page {page_number} is all older than {days} days; stopping this search"); break
+                if cutoff and old_seen:
+                    report(HEJ, f"{name}: page {page_number} reached listings older than {days} days; stopping this search"); break
                 next_link=page.get_by_role("link", name="Next page")
                 if await next_link.count() and await next_link.is_visible():
                     await next_link.click(); await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page); await asyncio.sleep(self.settings.request_delay)
@@ -127,9 +128,11 @@ class HigherEdJobsScraper:
         keyword = page.get_by_role("textbox", name="Keyword Use quotes to search")
         await keyword.fill(query); await page.get_by_role("button", name="Search Jobs").click()
         await page.wait_for_load_state("domcontentloaded"); await self._ensure_access(page)
-        # 100 results per page instead of 25 keeps the large category searches to a few page loads.
-        if "NumJobs=" not in page.url:
-            await page.goto(page.url + ("&" if "?" in page.url else "?") + "NumJobs=100", wait_until="domcontentloaded"); await self._ensure_access(page)
+        # 100 results per page instead of 25 keeps the large category searches to a few page loads, and
+        # SortBy=1 orders them newest first so paging can stop at the age limit.
+        missing = [param for param in ("NumJobs=100", "SortBy=1") if param not in page.url]
+        if missing:
+            await page.goto(page.url + ("&" if "?" in page.url else "?") + "&".join(missing), wait_until="domcontentloaded"); await self._ensure_access(page)
 
     async def _tabs_for(self, context: BrowserContext):
         if context not in self._tabs:

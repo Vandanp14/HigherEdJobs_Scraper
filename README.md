@@ -12,8 +12,9 @@ The dashboard uses port 8000, or the first free port up to 8010 if another proje
 
 Saved jobs show immediately. Click **Run HigherEdJobs** or **Run AIR Career Center** to fetch listings; new ones appear as they are fetched. Jobs already saved with a description are skipped, so a later run the same day only opens new listings. Statuses and notes are kept; jobs that failed before are retried.
 
-HigherEdJobs runs only look back **10 days**: older listings are skipped, and each search stops
-paging once a whole results page is older than that. Listings with no date are kept. Change it with
+HigherEdJobs runs only look back **10 days**. Searches sort by date posted (newest first), so paging
+stops at the first page that has a listing older than the limit. Undated listings after that point
+are older postings and are skipped; undated ones before it are kept. Change it with
 `HEJ_MAX_AGE_DAYS` in `.env` (`0` means no limit). AIR is a single small board and is always read in full.
 
 If HigherEdJobs asks for human verification, you hear a sound and the terminal prints a message. Solve the check in the browser window the run opened. The run waits up to 5 minutes (`HEJ_VERIFICATION_TIMEOUT`, in seconds), saves the session, and continues. `scripts/codegen.sh` is no longer needed for daily runs.

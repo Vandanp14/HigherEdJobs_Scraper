@@ -236,32 +236,93 @@ def test_air_rerun_skips_listings_already_saved(tmp_path, monkeypatch, capsys):
     assert "(1/1) ↺ Analyst — already saved" in capsys.readouterr().out
 
 
-def test_old_listings_are_skipped_and_paging_stops_once_a_page_is_all_old(tmp_path, monkeypatch, capsys):
+class NextLink(FakeLocator):
+    def __init__(self, clicks, visible=True): self.clicks, self.visible = clicks, visible
+    async def count(self): return int(self.visible)
+    async def is_visible(self): return self.visible
+    async def click(self): self.clicks.append(1)
+
+
+def _run_paged(tmp_path, monkeypatch, pages, max_age_days, next_on_pages=None):
+    pages = list(pages); clicks = []
+    shown = []
+
+    def parse(html, url, now):
+        shown.append(1); return pages.pop(0)
+
+    monkeypatch.setattr(scraper, "parse_results", parse)
+    monkeypatch.setattr(scraper, "parse_job", lambda html, url, now: JobDraft(higheredjobs_url=url, normalized_description="Text"))
+    visible_pages = next_on_pages if next_on_pages is not None else {1, 2, 3}
+    monkeypatch.setattr(FakePage, "get_by_role", lambda self, role, name=None: NextLink(clicks, len(shown) in visible_pages) if name == "Next page" else FakeLocator())
+    database = Database(tmp_path / "jobs.sqlite3")
+    job_scraper = scraper.HigherEdJobsScraper(database, replace(Settings(), request_delay=0, headless=True, max_age_days=max_age_days))
+    asyncio.run(job_scraper._run_group(FakeContext(), {"id": "data", "name": "Data", "query": "q"}, {}, []))
+    saved = {row[0] for row in database.connection.execute("SELECT higheredjobs_url FROM jobs")}
+    return saved, clicks
+
+
+def test_undated_after_old_listing_is_skipped_and_paging_stops(tmp_path, monkeypatch, capsys):
+    from datetime import date, timedelta
+
+    today = date.today()
+    undated_first = JobDraft(higheredjobs_url="https://h/undated-first")
+    recent = JobDraft(higheredjobs_url="https://h/recent", posted_date=(today - timedelta(days=3)).isoformat())
+    old = JobDraft(higheredjobs_url="https://h/old", posted_date=(today - timedelta(days=20)).isoformat())
+    undated_tail = JobDraft(higheredjobs_url="https://h/undated-tail")
+    never = JobDraft(higheredjobs_url="https://h/never", posted_date=today.isoformat())
+    saved, clicks = _run_paged(tmp_path, monkeypatch, [[undated_first, recent, old, undated_tail], [never]], 14)
+    assert saved == {"https://h/undated-first", "https://h/recent"}
+    assert len(clicks) == 0
+    assert "older than 14 days" in capsys.readouterr().out
+
+
+def test_no_age_limit_keeps_paging_and_undated(tmp_path, monkeypatch):
     from datetime import date, timedelta
 
     today = date.today()
     recent = JobDraft(higheredjobs_url="https://h/recent", posted_date=(today - timedelta(days=3)).isoformat())
-    old = JobDraft(higheredjobs_url="https://h/old", posted_date=(today - timedelta(days=20)).isoformat())
-    older = JobDraft(higheredjobs_url="https://h/older", posted_date=(today - timedelta(days=30)).isoformat())
+    old = JobDraft(higheredjobs_url="https://h/old", posted_date=(today - timedelta(days=200)).isoformat())
     undated = JobDraft(higheredjobs_url="https://h/undated")
-    pages = [[recent, old, undated], [older], [JobDraft(higheredjobs_url="https://h/never", posted_date=today.isoformat())]]
-    monkeypatch.setattr(scraper, "parse_results", lambda html, url, now: pages.pop(0))
-    monkeypatch.setattr(scraper, "parse_job", lambda html, url, now: JobDraft(higheredjobs_url=url, normalized_description="Text"))
-    clicks = []
-
-    class NextLink(FakeLocator):
-        async def count(self): return 1
-        async def is_visible(self): return True
-        async def click(self): clicks.append(1)
-
-    monkeypatch.setattr(FakePage, "get_by_role", lambda self, role, name=None: NextLink() if name == "Next page" else FakeLocator())
-    database = Database(tmp_path / "jobs.sqlite3")
-    job_scraper = scraper.HigherEdJobsScraper(database, replace(Settings(), request_delay=0, headless=True, max_age_days=14))
-    asyncio.run(job_scraper._run_group(FakeContext(), {"id": "data", "name": "Data", "query": "q"}, {}, []))
-    saved = {row[0] for row in database.connection.execute("SELECT higheredjobs_url FROM jobs")}
-    assert saved == {"https://h/recent", "https://h/undated"}
+    older = JobDraft(higheredjobs_url="https://h/older", posted_date=(today - timedelta(days=300)).isoformat())
+    saved, clicks = _run_paged(tmp_path, monkeypatch, [[recent, old, undated], [older]], 0, next_on_pages={1})
+    assert saved == {"https://h/recent", "https://h/old", "https://h/undated", "https://h/older"}
     assert len(clicks) == 1
-    assert "older than 14 days" in capsys.readouterr().out
+
+
+def _search_gotos(tmp_path, final_url):
+    gotos = []
+
+    class SearchPage(FakePage):
+        async def goto(self, url, wait_until=None):
+            gotos.append(url); self.url = url
+
+        def get_by_role(self, role, name=None):
+            page = self
+
+            class Click(FakeLocator):
+                async def click(self): page.url = final_url
+
+            return Click()
+
+    job_scraper = scraper.HigherEdJobsScraper(Database(tmp_path / "jobs.sqlite3"), replace(Settings(), request_delay=0, headless=True))
+    asyncio.run(job_scraper._search(SearchPage(FakeContext()), "x", []))
+    return gotos
+
+
+def test_search_url_requests_date_sort_and_100_per_page(tmp_path):
+    gotos = _search_gotos(tmp_path, "https://www.higheredjobs.com/search/advanced_action.cfm?Keyword=x")
+    assert len(gotos) == 2
+    assert gotos[-1].count("NumJobs=100") == 1 and gotos[-1].count("SortBy=1") == 1
+
+
+def test_search_url_with_both_params_is_not_reloaded(tmp_path):
+    gotos = _search_gotos(tmp_path, "https://www.higheredjobs.com/search/advanced_action.cfm?Keyword=x&NumJobs=100&SortBy=1")
+    assert len(gotos) == 1
+
+
+def test_search_url_adds_only_missing_param(tmp_path):
+    gotos = _search_gotos(tmp_path, "https://www.higheredjobs.com/search/advanced_action.cfm?Keyword=x&NumJobs=100")
+    assert gotos[-1].count("NumJobs=") == 1 and gotos[-1].count("SortBy=1") == 1
 
 
 def test_run_result_is_for_its_own_source(tmp_path, monkeypatch):
