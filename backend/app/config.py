@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
+# ATS boards read by Company boards. Each is also the `source` of the jobs it saves.
+BOARD_SOURCES = ("greenhouse", "lever", "ashby", "workday", "smartrecruiters")
+
 
 @dataclass(frozen=True)
 class Settings:
