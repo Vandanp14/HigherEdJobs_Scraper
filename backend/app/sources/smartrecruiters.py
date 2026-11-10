@@ -1,5 +1,7 @@
 """SmartRecruiters public postings API. List pages carry no description, so each job that could be
 kept and is not saved yet needs one more request."""
+from datetime import date, timedelta
+
 from ..early_career import location_allowed, title_candidate
 from ..parser import JobDraft, ParseError
 from .adapters import BoardFetch, company_name, draft, job_id, utc_date
@@ -24,7 +26,7 @@ def _location(item: dict) -> str | None:
     return (item.get("location") or {}).get("fullLocation") or None
 
 
-async def fetch_board(client, company: dict, known_ids: set[str]) -> BoardFetch:
+async def fetch_board(client, company: dict, known_ids: set[str], max_age_days: int = 0) -> BoardFetch:
     base = f"https://api.smartrecruiters.com/v1/companies/{company['slug']}/postings"
     found: dict[str, dict] = {}
     result, offset = BoardFetch(), 0
@@ -44,12 +46,16 @@ async def fetch_board(client, company: dict, known_ids: set[str]) -> BoardFetch:
         offset += PAGE_SIZE
         if not content or offset >= int(body.get("totalFound") or 0):
             break
+    oldest = (date.today() - timedelta(days=max_age_days)).isoformat() if max_age_days else None
     for ats_id, item in found.items():
         source_job_id = job_id(company, ats_id)
         result.seen_ids.add(source_job_id)
         title = " ".join((item.get("name") or "").split())
         if source_job_id in known_ids or not title_candidate(title) or not location_allowed(_location(item)):
             continue
+        released = utc_date(item.get("releasedDate"))
+        if oldest and released and released < oldest:
+            continue  # Too old to keep, so its detail is not requested.
         fallback = f"https://jobs.smartrecruiters.com/{company['slug']}/{ats_id}"
         try:
             info = await client.get_json(f"{base}/{ats_id}", key=ATS)

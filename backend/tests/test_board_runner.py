@@ -282,3 +282,40 @@ async def test_a_database_error_while_saving_fails_one_company_not_the_run(db, m
     assert result["summary"]["companies_failed"] == 1
     assert result["summary"]["companies_succeeded"] == 2
     assert any("database is locked" in error["error"] for error in result["errors"])
+
+
+def dated(company, number, days_old):
+    from datetime import date, timedelta
+    draft = job(company, number)
+    draft.posted_date = (date.today() - timedelta(days=days_old)).isoformat() if days_old is not None else None
+    return draft
+
+
+def dated_board(*specs):
+    async def fetch(client, company, known_ids):
+        drafts = [dated(company, number, age) for number, age in specs]
+        return BoardFetch(drafts, {d.source_job_id for d in drafts}, True)
+    return fetch
+
+
+async def test_postings_older_than_the_limit_are_not_saved(db):
+    add(db, "greenhouse", "acme")
+    settings = SimpleNamespace(board_delay=0, board_max_age_days=7)
+    result = await BoardsRunner(db, settings, client=object(),
+                                adapters={"greenhouse": dated_board((1, 0), (2, 7), (3, 8), (4, None))}).run()
+    # Undated postings are kept, as on HigherEdJobs; all four still count as listed on the board.
+    assert set(jobs(db)) == {"acme:1", "acme:2", "acme:4"}
+    assert result["summary"]["jobs_seen"] == 4
+
+
+async def test_zero_limit_keeps_every_age(db):
+    add(db, "greenhouse", "acme")
+    settings = SimpleNamespace(board_delay=0, board_max_age_days=0)
+    await BoardsRunner(db, settings, client=object(), adapters={"greenhouse": dated_board((1, 400))}).run()
+    assert set(jobs(db)) == {"acme:1"}
+
+
+def test_default_adapters_get_the_age_limit():
+    runner = BoardsRunner(None, SimpleNamespace(board_delay=0, board_max_age_days=7))
+    assert runner.adapters["workday"].keywords == {"max_age_days": 7}
+    assert runner.adapters["smartrecruiters"].keywords == {"max_age_days": 7}

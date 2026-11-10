@@ -210,3 +210,20 @@ async def test_entries_without_a_path_are_skipped_not_a_format_change():
 async def test_page_of_only_unusable_entries_is_a_format_change():
     with pytest.raises(ParseError):
         await fetch(FakeWorkday({"software engineer": [{"bulletFields": ["R-1"]}, {"bulletFields": ["R-2"]}]}))
+
+
+@pytest.mark.parametrize("posted_on,days", [("Posted Today", 0), ("Posted Yesterday", 1), ("Posted 5 Days Ago", 5),
+                                            ("Posted 30+ Days Ago", 30), ("", None), ("Recently", None)])
+def test_posted_on_is_read_as_days(posted_on, days):
+    assert workday.posted_days(posted_on) == days
+
+
+async def test_old_postings_skip_the_detail_request():
+    old = posting("Software Engineer I", "/job/A/Old_R1"); old["postedOn"] = "Posted 30+ Days Ago"
+    new = posting("Software Engineer I", "/job/A/New_R2"); new["postedOn"] = "Posted 3 Days Ago"
+    unknown = posting("Software Engineer I", "/job/A/Unknown_R3"); unknown["postedOn"] = ""
+    fake = FakeWorkday({"software engineer": [old, new, unknown]})
+    async with BoardClient(delay=0, transport=httpx.MockTransport(fake)) as client:
+        result = await workday.fetch_board(client, COMPANY, set(), max_age_days=7)
+    assert fake.details == ["/job/A/New_R2", "/job/A/Unknown_R3"]
+    assert len(result.seen_ids) == 3

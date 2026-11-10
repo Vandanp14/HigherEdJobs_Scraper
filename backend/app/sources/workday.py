@@ -1,6 +1,8 @@
 """Workday career sites. The JSON endpoint behind each site is unofficial: list pages are searched
 server-side per term, and a job's description needs one more request, made only for jobs that
 could be kept and are not saved yet."""
+import re
+
 from ..early_career import WORKDAY_SEARCH_TERMS, location_allowed, title_candidate
 from ..parser import JobDraft, ParseError
 from .adapters import BoardFetch, company_name, draft, safe_url, utc_date
@@ -8,6 +10,18 @@ from .client import BoardError, BoardMissing
 
 ATS = "workday"
 PAGE_SIZE = 20
+_POSTED_DAYS = re.compile(r"(\d+)\+?\s+days?\s+ago", re.I)
+
+
+def posted_days(posted_on: str | None) -> int | None:
+    """Days since posting from Workday's list text ("Posted Today", "Posted 30+ Days Ago"); None if unreadable."""
+    text = (posted_on or "").lower()
+    if "today" in text:
+        return 0
+    if "yesterday" in text:
+        return 1
+    match = _POSTED_DAYS.search(text)
+    return int(match[1]) if match else None
 
 
 def _postings(body) -> list[dict]:
@@ -23,7 +37,7 @@ def _postings(body) -> list[dict]:
     return usable
 
 
-async def fetch_board(client, company: dict, known_ids: set[str]) -> BoardFetch:
+async def fetch_board(client, company: dict, known_ids: set[str], max_age_days: int = 0) -> BoardFetch:
     base = f"https://{company['host']}/wday/cxs/{company['slug']}/{company['site']}"
     found: dict[str, dict] = {}
     result = BoardFetch()
@@ -51,6 +65,9 @@ async def fetch_board(client, company: dict, known_ids: set[str]) -> BoardFetch:
         title, location = item.get("title") or "", item.get("locationsText")
         if source_job_id in known_ids or not title_candidate(title) or not location_allowed(location):
             continue
+        age = posted_days(item.get("postedOn"))
+        if max_age_days and age is not None and age > max_age_days:
+            continue  # Too old to keep, so its detail is not requested.
         url = f"https://{company['host']}/{company['site']}{path}"
         try:
             info = (await client.get_json(f"{base}{path}", key=ATS)).get("jobPostingInfo") or {}

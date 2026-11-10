@@ -3,6 +3,8 @@ what failed so a failed fetch is never mistaken for an empty board."""
 import asyncio
 import sqlite3
 import time
+from datetime import date, timedelta
+from functools import partial
 
 from ..early_career import keep_job, location_allowed, title_candidate
 from ..progress import elapsed, report
@@ -23,7 +25,12 @@ class BoardsRunner:
     def __init__(self, database, settings, client=None, adapters: dict | None = None):
         self.database, self.settings = database, settings
         self.client = client
-        self.adapters = ADAPTERS if adapters is None else adapters
+        self.max_age_days = getattr(settings, "board_max_age_days", 0)
+        # Workday and SmartRecruiters list each job's age, so old jobs skip their detail request.
+        self.adapters = adapters if adapters is not None else {
+            ats: partial(fetch, max_age_days=self.max_age_days) if ats in ("workday", "smartrecruiters") else fetch
+            for ats, fetch in ADAPTERS.items()
+        }
         self.errors: list[dict] = []
         self.unlisted_errors = 0
         self.summary = dict(companies_total=0, companies_checked=0, companies_succeeded=0, companies_failed=0,
@@ -112,7 +119,10 @@ class BoardsRunner:
 
     def _save(self, company: dict, fetched):
         self.summary["jobs_seen"] += len(fetched.seen_ids)
+        oldest = (date.today() - timedelta(days=self.max_age_days)).isoformat() if self.max_age_days else None
         for draft in fetched.drafts:
+            if oldest and draft.posted_date and draft.posted_date < oldest:
+                continue  # Older than HEJ_BOARD_MAX_AGE_DAYS; undated postings are kept.
             if draft.description_status == "Failed":
                 # The description could not be read, so the early-career check cannot run; keep
                 # software roles anyway so the failure is visible instead of silently dropped.

@@ -69,6 +69,9 @@ existing For you tab stays HigherEdJobs-only.
   and hidden (unless you applied), and reopens if it comes back. Rows are never deleted.
 - With about 2,700 companies (1,300 of them Workday), a full run can take hours. Workday is the
   slowest. The dashboard shows progress and stays usable.
+- Postings older than `HEJ_BOARD_MAX_AGE_DAYS` (default 7) are not saved; undated ones are kept, and
+  `0` means no limit. Workday and SmartRecruiters skip the detail request for old postings, which
+  shortens runs. Jobs saved before the limit are kept.
 - Companies on no public list are missed. Add them with `scripts/add-company.py`.
 - `.venv/bin/python scripts/run-boards.py --limit 5` runs a quick check of 5 companies per ATS from
   the terminal.

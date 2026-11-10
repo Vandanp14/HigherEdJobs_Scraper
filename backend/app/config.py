@@ -17,6 +17,8 @@ class Settings:
     request_delay: float = max(0.5, float(os.getenv("HEJ_REQUEST_DELAY", "2")))
     # Seconds between requests to one ATS (Company boards). Different ATSes run side by side.
     board_delay: float = max(0.5, float(os.getenv("HEJ_BOARD_DELAY", "1")))
+    # Company boards postings older than this many days are not saved. Undated ones are kept. 0 means no limit.
+    board_max_age_days: int = max(0, int(os.getenv("HEJ_BOARD_MAX_AGE_DAYS", "7")))
     # HigherEdJobs can invalidate a visible, manually verified session when the
     # follow-up search uses a headless browser. Default to visible operation so
     # any access check remains actionable rather than becoming silent failures.

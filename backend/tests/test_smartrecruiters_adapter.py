@@ -118,3 +118,15 @@ async def test_real_list_fixture_parses():
     result = await fetch(fake)
     # The saved postings are internships, so none is fetched in detail.
     assert len(result.seen_ids) == 3 and fake.details == []
+
+
+async def test_old_postings_skip_the_detail_request():
+    from datetime import date, timedelta
+    old, new = posting(1, "Software Engineer I"), posting(2, "Software Engineer I")
+    old["releasedDate"] = (date.today() - timedelta(days=20)).isoformat() + "T10:00:00.000Z"
+    new["releasedDate"] = date.today().isoformat() + "T10:00:00.000Z"
+    fake = FakeSmartRecruiters([old, new])
+    async with BoardClient(delay=0, transport=httpx.MockTransport(fake)) as client:
+        result = await smartrecruiters.fetch_board(client, COMPANY, set(), max_age_days=7)
+    assert fake.details == ["2"]
+    assert len(result.seen_ids) == 2
