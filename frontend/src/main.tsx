@@ -111,7 +111,7 @@ function App() {
     return () => window.clearInterval(timer);
   }, [activeRun, runStartedAt]);
 
-  // Runs started outside this tab (run.sh) save jobs as they go; poll so they appear here.
+  // Runs started outside this tab (another tab or a direct API call) save jobs as they go; poll so they appear here.
   useEffect(() => {
     if (activeRun) return undefined;
     const poll = async () => {
@@ -290,6 +290,7 @@ function App() {
           if (page !== 1) setPage(1); else await load();
           setNotice(message);
         }}
+        onFailed={setNotice}
         onFreshRun={freshRun}
       />}
       {showSources && <section className="sources">

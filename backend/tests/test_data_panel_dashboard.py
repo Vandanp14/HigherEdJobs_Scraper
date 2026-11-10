@@ -58,6 +58,8 @@ async def test_data_panel_lists_sources_including_leftover_boards(database):
         async with browser_page() as page:
             panel = await open_data_panel(page, url)
             await panel.get_by_text("HigherEdJobs", exact=True).wait_for()
+            assert await panel.get_by_text("0 Applied").count() == 0  # zero counts are omitted
+            assert await panel.get_by_text("with notes").count() == 0
             await panel.get_by_text("Greenhouse", exact=True).wait_for()
             await panel.get_by_text("2 jobs", exact=True).wait_for()
             await panel.get_by_text("1 job", exact=True).wait_for()

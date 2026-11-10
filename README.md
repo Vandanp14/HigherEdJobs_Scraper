@@ -32,7 +32,7 @@ Only one browser window opens, for HigherEdJobs, and it reuses two tabs for the 
 does not keep pulling you back to its desktop. AIR runs without a window because it has no
 verification.
 
-Press `Ctrl+C` to stop.
+Press `Ctrl+C` to stop the dashboard; it also cancels any run in progress.
 
 ### Data panel
 
@@ -41,10 +41,10 @@ The toolbar **Data** button opens the Data panel:
 - **Per-source delete** removes one job board's jobs and its run history, including leftover Company boards rows (greenhouse, lever, ashby, workday, smartrecruiters) from the earlier version.
 - **Clear all data** removes every job and all run history.
 - **Fresh run** clears all data, then runs AIR Career Center and HigherEdJobs together (the old morning routine).
-- Every delete or clear asks for confirmation in the page first, showing how many jobs it removes, how many are marked **Applied**, and how many have notes. Deletes **do include Applied status and notes**.
+- Every delete or clear asks for confirmation in the page first, showing how many jobs it removes, including any Applied jobs and jobs with notes (zero counts are omitted). Deletes **do include Applied status and notes**.
 - The panel disables every delete, clear and fresh-run button while any run is active. The API itself is narrower: it answers 409 only for a delete of a source that is running, or a clear-all while any run is active.
 - The saved browser session in `data/browser-state.json` is always kept.
-- A storage readout shows the Database and Browser session sizes, and each run's size before and after.
+- A storage readout shows the Database and Browser session sizes, and each board's last run size before and after. Delete and Clear all data compact the database file, so the readout drops.
 
 ## Start the app for development
 

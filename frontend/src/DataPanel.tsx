@@ -7,6 +7,7 @@ type Props = {
   busy: boolean;
   onClose(): void;
   onChanged(message: string): Promise<void>;
+  onFailed(message: string): void;
   onFreshRun(): Promise<void>;
 };
 
@@ -34,9 +35,17 @@ export const storageChange = (run: { db_bytes_before?: number | null; db_bytes_a
     ? ''
     : ` Storage ${formatBytes(run.db_bytes_before)} → ${formatBytes(run.db_bytes_after)}.`;
 
+// "2 Applied · 1 with notes · Last run 1.0 MB → 1.2 MB"; Applied/notes only when non-zero, and a run
+// with no readings (legacy or interrupted) shows "—".
+const rowMeta = (row: DataSource, lastRun: LastRuns[string]) => [
+  row.applied ? `${row.applied} Applied` : '',
+  row.with_notes ? `${row.with_notes} with notes` : '',
+  lastRun ? `Last run ${formatBytes(lastRun.db_bytes_before)} → ${formatBytes(lastRun.db_bytes_after)}` : '',
+].filter(Boolean).join(' · ');
+
 type LastRuns = Record<string, { db_bytes_before?: number | null; db_bytes_after?: number | null } | null | undefined>;
 
-export function DataPanel({ busy, onClose, onChanged, onFreshRun }: Props) {
+export function DataPanel({ busy, onClose, onChanged, onFailed, onFreshRun }: Props) {
   const [sources, setSources] = useState<DataSource[] | null>(null);
   const [storage, setStorage] = useState<StorageUse | null>(null);
   const [lastRuns, setLastRuns] = useState<LastRuns>({});
@@ -92,9 +101,10 @@ export function DataPanel({ busy, onClose, onChanged, onFreshRun }: Props) {
         ? `Deleted ${boardJobs(result.deleted.jobs, action.source.name)}.`
         : `Cleared all data: ${jobWord(result.deleted.jobs)} deleted.`);
     } catch (error) {
+      // Nothing changed, so do not reload the jobs view: just show the failure.
       setPending(null);
       await refresh();
-      await onChanged((error as Error).message);
+      onFailed(`${action.kind === 'delete' ? 'Delete' : 'Clear'} failed: ${(error as Error).message}`);
     } finally {
       setWorking(false);
     }
@@ -109,7 +119,7 @@ export function DataPanel({ busy, onClose, onChanged, onFreshRun }: Props) {
       : <ul className="data-list">{sources.map(row => <li key={row.source} className="data-row">
         <b>{row.name}</b>
         <span>{jobWord(row.jobs)}</span>
-        <small>{row.applied} Applied · {row.with_notes} with notes{lastRuns[row.source]?.db_bytes_after != null && <> · Last run {formatBytes(lastRuns[row.source]?.db_bytes_before)} → {formatBytes(lastRuns[row.source]?.db_bytes_after)}</>}</small>
+        <small>{rowMeta(row, lastRuns[row.source])}</small>
         <button className="source-run" aria-label={`Delete ${row.name}`} disabled={locked} onClick={() => setPending({ kind: 'delete', source: row })}>Delete</button>
       </li>)}</ul>}
     {storage && <p className="data-storage">Database {formatBytes(storage.database_bytes)} · Browser session {formatBytes(storage.browser_session_bytes)}</p>}

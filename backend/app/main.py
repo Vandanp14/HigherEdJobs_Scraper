@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -28,6 +29,9 @@ def relabel_on_startup(db):
 relabel_on_startup(database)
 # Sources with a run in progress; a second run would double the request rate to the same site.
 RUNNING: set[str]=set()
+# DNS-rebinding guard: the delete endpoints are destructive, so only answer to local host names.
+# "testserver" is the host name Starlette TestClient sends.
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_methods=["*"], allow_headers=["*"])
 
 class GroupUpdate(BaseModel): enabled: bool

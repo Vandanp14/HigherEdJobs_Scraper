@@ -3,6 +3,7 @@ import html
 import json
 import re
 import sqlite3
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -324,6 +325,7 @@ class Database:
             self.connection.execute(f"DELETE FROM job_search_matches WHERE job_id IN ({ids})", (source,))
             jobs = self.connection.execute("DELETE FROM jobs WHERE source=?", (source,)).rowcount
             runs = self.connection.execute("DELETE FROM scrape_runs WHERE source=?", (source,)).rowcount
+        self._compact()
         return {"jobs": jobs, "runs": runs}
 
     def clear_jobs(self) -> dict:
@@ -332,7 +334,16 @@ class Database:
             self.connection.execute("DELETE FROM job_search_matches")
             jobs = self.connection.execute("DELETE FROM jobs").rowcount
             runs = self.connection.execute("DELETE FROM scrape_runs").rowcount
+        self._compact()
         return {"jobs": jobs, "runs": runs}
+
+    def _compact(self):
+        """VACUUM after a delete so the file shrinks. The rows are already gone, so a failure only warns."""
+        try:
+            self.connection.execute("VACUUM")
+            self.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.OperationalError as error:
+            print(f"Warning: rows deleted but VACUUM failed ({error}); the file was not compacted.", file=sys.stderr)
 
     def jobs(self, query: str = "", group: str = "", sponsorship: str = "", application_status: str = "", days: str = "7", sort: str = "newest", page: int = 1, per_page: int = 50, source: str = "", description: str = "", due: str = "", hide: str = "", min_fit: int | None = None):
         # HigherEdJobs keyword matches saved before the title filter can be off-field (a chemistry

@@ -40,6 +40,7 @@ def test_source_counts_report_applied_and_notes(tmp_path):
 
 def test_delete_source_removes_only_that_source_and_its_children(tmp_path):
     db, ids = seed(tmp_path)
+    db.connection.execute("PRAGMA foreign_keys = OFF")  # explicit child deletes must not rely on cascades
     assert db.delete_source("greenhouse") == {"jobs": 1, "runs": 1}
     for table in ("job_search_matches", "sponsorship_analysis"):
         orphans = db.connection.execute(
@@ -70,9 +71,63 @@ def test_source_counts_ignores_run_only_sources(tmp_path):
 
 def test_clear_jobs_returns_counts(tmp_path):
     db, _ = seed(tmp_path)
+    db.connection.execute("PRAGMA foreign_keys = OFF")
     assert db.clear_jobs() == {"jobs": 3, "runs": 2}
+    for table in ("job_search_matches", "sponsorship_analysis"):
+        assert count(db, table) == 0
     assert count(db, "jobs") == 0
     assert db.clear_jobs() == {"jobs": 0, "runs": 0}
+
+
+def fat_db(tmp_path):
+    db = Database(tmp_path / "jobs.sqlite3")
+    for source in ("higheredjobs", "greenhouse"):
+        for i in range(40):
+            db.upsert_job(
+                JobDraft(source=source, source_job_id=f"{source}{i}", source_url=f"https://x/{source}{i}",
+                         title=f"t{i}", raw_description="x" * 20000),
+                "data",
+            )
+    return db
+
+
+def test_delete_source_shrinks_storage(tmp_path):
+    db = fat_db(tmp_path)
+    before = db.storage_bytes()
+    db.delete_source("greenhouse")
+    assert db.storage_bytes() < before
+
+
+def test_clear_jobs_shrinks_storage(tmp_path):
+    db = fat_db(tmp_path)
+    before = db.storage_bytes()
+    db.clear_jobs()
+    assert db.storage_bytes() < before / 2
+
+
+def test_vacuum_failure_warns_but_keeps_delete(tmp_path, capsys):
+    import sqlite3
+
+    db = fat_db(tmp_path)
+
+    class Conn:
+        def __init__(self, real):
+            self.real = real
+
+        def execute(self, sql, *args):
+            if sql.strip().upper() == "VACUUM":
+                raise sqlite3.OperationalError("database is locked")
+            return self.real.execute(sql, *args)
+
+        def __enter__(self):
+            return self.real.__enter__()
+
+        def __exit__(self, *exc):
+            return self.real.__exit__(*exc)
+
+    db.connection = Conn(db.connection)
+    assert db.clear_jobs()["jobs"] == 80
+    assert "VACUUM" in capsys.readouterr().err
 
 
 def api(tmp_path, extra_source=None):
