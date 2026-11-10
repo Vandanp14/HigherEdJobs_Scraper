@@ -168,3 +168,45 @@ async def test_fresh_run_clears_then_runs_both_scrapers(database, monkeypatch):
             await panel.get_by_role("button", name="Confirm fresh run", exact=True).click()
             await page.get_by_role("status").filter(has_text="Fresh run complete.").wait_for()
     assert seen_when_run == {"higheredjobs": [], "air": []}
+
+
+async def test_failed_source_load_is_not_shown_as_no_saved_data(database):
+    seed(database, "higheredjobs", 2)
+
+    async def fail(route):
+        await route.fulfill(status=500, content_type="application/json", body='{"detail":"database is locked"}')
+
+    with serve_dashboard() as url:
+        async with browser_page() as page:
+            await page.route("**/api/data/sources", fail)
+            panel = await open_data_panel(page, url)
+            await panel.get_by_text("Could not load saved data: database is locked").wait_for()
+            assert await panel.get_by_text("No saved data").count() == 0
+
+
+async def test_deleting_a_source_on_page_two_reloads_page_one_once(database):
+    seed(database, "higheredjobs", PER_PAGE + 5)
+    seed(database, "air", 1)
+    with serve_dashboard() as url:
+        async with browser_page() as page:
+            await open_higheredjobs(page, url)
+            await page.get_by_role("button", name="Next").click()
+            await page.get_by_text("Page 2 of 2").wait_for()
+            await page.wait_for_function("document.querySelectorAll('tbody tr:not(.detail)').length === 5")
+            await page.get_by_role("button", name="Data", exact=True).click()
+            panel = page.get_by_role("region", name="Data", exact=True)
+            await panel.get_by_role("button", name="Delete AIR Career Center", exact=True).wait_for()
+
+            job_requests = []
+            page.on("request", lambda request: job_requests.append(request.url) if "/api/jobs?" in request.url else None)
+            await panel.get_by_role("button", name="Delete AIR Career Center", exact=True).click()
+            await panel.get_by_role("button", name="Confirm delete", exact=True).click()
+            await page.get_by_role("status").filter(has_text="Deleted 1 AIR Career Center job").wait_for()
+            await page.get_by_text("Page 1 of 2").wait_for()
+            await page.wait_for_function(f"document.querySelectorAll('tbody tr:not(.detail)').length === {PER_PAGE}")
+            await page.wait_for_timeout(500)
+
+            assert job_requests, "deleting a source must reload the jobs"
+            assert not [url for url in job_requests if "page=2" in url], job_requests
+            assert await page.locator("tbody tr:not(.detail)").count() == PER_PAGE
+            await page.get_by_text("Page 1 of 2").wait_for()

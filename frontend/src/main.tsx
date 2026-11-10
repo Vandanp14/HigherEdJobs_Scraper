@@ -74,16 +74,17 @@ function App() {
   const selectedSignals = filters.sponsorship ? filters.sponsorship.split(',') : [];
   const hiddenLabels = filters.hide ? filters.hide.split(',') : [];
 
-  const load = async () => {
+  // targetPage lets a caller reload page 1 without waiting for the page state to update.
+  const load = async (targetPage = page) => {
     setLoading(true);
     try {
       const [data, sourceGroups, sourceList] = await Promise.all([
-        request(`/jobs?${parameters}&page=${page}`),
+        request(`/jobs?${parameters}&page=${targetPage}`),
         request('/groups'),
         request('/sources'),
       ]);
       // A status change can empty the last page; step back instead of showing nothing.
-      if (data.items.length === 0 && page > 1 && data.total > 0) {
+      if (data.items.length === 0 && targetPage > 1 && data.total > 0) {
         setPage(Math.ceil(data.total / perPage));
         return;
       }
@@ -97,7 +98,7 @@ function App() {
     }
   };
   useEffect(() => {
-    const timer = window.setTimeout(load, 180);
+    const timer = window.setTimeout(() => load(), 180);
     return () => window.clearTimeout(timer);
   }, [parameters, page]);
   useEffect(() => {
@@ -202,6 +203,7 @@ function App() {
       return;
     }
     setPage(1);
+    setExpanded(null);
     setNotice('Data cleared. AIR and HigherEdJobs are running. Keep this tab open; do not refresh it.');
     const [air, higheredjobs] = await Promise.allSettled([
       request('/runs/air', { method: 'POST' }) as Promise<Run>,
@@ -215,7 +217,7 @@ function App() {
     };
     try {
       setNotice(`Fresh run complete. ${summary('AIR', air)}. ${summary('HigherEdJobs', higheredjobs)}.`);
-      await load();
+      await load(1);
     } finally {
       setLoading(false);
       finishRun();
@@ -242,7 +244,7 @@ function App() {
     });
     load();
   };
-  const opened = (id: number) => request('/jobs/' + id + '/opened', { method: 'POST' }).then(load);
+  const opened = (id: number) => request('/jobs/' + id + '/opened', { method: 'POST' }).then(() => load());
   const toggleGroup = (id: string) => update('group', selectedGroups.includes(id)
     ? selectedGroups.filter(item => item !== id).join(',')
     : [...selectedGroups, id].join(','));
@@ -280,7 +282,12 @@ function App() {
       {showData && <DataPanel
         busy={Boolean(activeRun) || externalRun}
         onClose={() => setShowData(false)}
-        onChanged={async message => { setPage(1); setExpanded(null); await load(); setNotice(message); }}
+        onChanged={async message => {
+          setExpanded(null);
+          // Off page 1, the page change itself triggers the one reload; on page 1 nothing would, so load here.
+          if (page !== 1) setPage(1); else await load();
+          setNotice(message);
+        }}
         onFreshRun={freshRun}
       />}
       {showSources && <section className="sources">

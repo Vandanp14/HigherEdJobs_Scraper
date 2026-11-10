@@ -23,12 +23,15 @@ export function DataPanel({ busy, onClose, onChanged, onFreshRun }: Props) {
   const [sources, setSources] = useState<DataSource[] | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [working, setWorking] = useState(false);
+  // A failed load must not look like an empty database.
+  const [loadError, setLoadError] = useState('');
 
   const refresh = async () => {
     try {
       setSources(await request('/data/sources'));
-    } catch {
-      setSources(current => current ?? []);
+      setLoadError('');
+    } catch (error) {
+      setLoadError((error as Error).message);
     }
   };
   // Also when a run ends: it may have added or removed saved jobs.
@@ -74,8 +77,9 @@ export function DataPanel({ busy, onClose, onChanged, onFreshRun }: Props) {
   const locked = busy || working;
   return <section className="sources data-panel" role="region" aria-label="Data">
     <div className="section-title"><div><h2>Data</h2><p>Saved jobs per job board. Deleting removes the jobs, your Applied status and notes, and that board's run history.</p></div><button className="icon-button" aria-label="Close data" onClick={onClose}>×</button></div>
-    {sources === null ? <p className="data-empty">Loading saved data…</p> : sources.length === 0
-      ? <p className="data-empty">No saved data</p>
+    {loadError && <p className="data-empty data-error" role="alert">Could not load saved data: {loadError}</p>}
+    {sources === null ? (loadError ? null : <p className="data-empty">Loading saved data…</p>) : sources.length === 0
+      ? (loadError ? null : <p className="data-empty">No saved data</p>)
       : <ul className="data-list">{sources.map(row => <li key={row.source} className="data-row">
         <b>{row.name}</b>
         <span>{jobWord(row.jobs)}</span>
